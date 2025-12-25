@@ -1,0 +1,8 @@
+{
+  "version": "0.1",
+  "descriptions": {
+    "short_term": "Ephemeral per-session memory",
+    "long_term": "Persistent profile and preference memory",
+    "plan_memory": "Generated plans and versions"
+  }
+}
