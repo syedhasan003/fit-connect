@@ -1,15 +1,9 @@
 from app.ai.agents.agent_registry import AgentRegistry
 from app.ai.orchestrator.agent_router import AgentRouter
-
-# 🔐 RAG + TRUST IMPORTS
 from app.ai.central_rag_orchestrator import answer_with_rag_and_trust
-from app.ai.trust.user_safe_responses import soften_response, redirect_response
 
 
 def safe(value):
-    """
-    Ensures we only keep JSON-serializable, non-recursive data.
-    """
     if isinstance(value, (str, int, float, bool, type(None))):
         return value
     if isinstance(value, list):
@@ -33,62 +27,63 @@ class OrchestratorEngine:
         memory=None,
         goals=None,
     ):
-
         agent_name = self.router.choose_agent(message)
         agent = self.registry.get_agent(agent_name)
 
+        # -----------------------------
+        # NO AGENT FALLBACK
+        # -----------------------------
         if agent is None:
             return {
                 "structured_output": {
-                    "title": "Let's try that again.",
-                    "summary": "I couldn't match your request to the right expert.",
+                    "title": "Let’s try that again.",
+                    "summary": "I couldn’t match your request to the right expert.",
                     "suggestions": [
-                        "Try asking about workouts, diet, habits, progress, or motivation."
+                        "Try asking about workouts, diet, habits, or recovery."
                     ],
-                    "next_steps": "Tell me your goals and I’ll guide you."
+                    "next_steps": "Tell me your goal and I’ll guide you."
                 }
             }
 
+        # -----------------------------
+        # AGENT RESPONSE (INTENT OWNER)
+        # -----------------------------
         raw = await agent.respond(message)
 
         if not isinstance(raw, dict):
             raw = {
-                "title": "Let's try that again.",
+                "title": "Let’s try that again.",
                 "summary": "There was an issue processing that request.",
                 "suggestions": ["Try rephrasing your question."],
-                "next_steps": "What would you like to achieve first?"
+                "next_steps": "What would you like to achieve?"
             }
 
         # -----------------------------
-        # METADATA (SAFE)
+        # ATTACH METADATA (SAFE)
         # -----------------------------
-        metadata = {
+        raw.update({
             "_agent": agent_name,
             "_short_history_used": safe(short_history),
             "_profile_used": safe(profile),
             "_memory_used": safe(memory),
             "_goals_used": safe(goals),
-        }
-
-        raw.update(metadata)
+        })
 
         # -----------------------------
-        # 🔐 RAG + TRUST FINAL PASS
+        # RAG = EVIDENCE ONLY (NO INTENT)
         # -----------------------------
-        user_text = message if isinstance(message, str) else str(message)
+        rag = answer_with_rag_and_trust(message)
 
-        rag_answer, gate = answer_with_rag_and_trust(
-            user_query=user_text,
-            topic="normal"  # later: auto-classifier (injury / medical)
-        )
+        if isinstance(rag, dict):
+            # ⚠️ DO NOT TOUCH SUMMARY
+            # Agent owns intent & wording
 
-        if gate == "allow" and rag_answer.answer:
-            raw["summary"] = rag_answer.answer
+            # Inject evidence ONLY if agent didn't supply it
+            if rag.get("data") and not raw.get("data"):
+                raw["data"] = rag["data"]
 
-        elif gate == "soften" and rag_answer.answer:
-            raw["summary"] = soften_response(rag_answer.answer)
-
-        elif gate == "redirect":
-            raw["summary"] = redirect_response()
+            raw["sources"] = rag.get("sources", [])
+            raw["_trust_state"] = rag.get("_trust_state")
+            raw["_intent"] = rag.get("_intent")
 
         return {"structured_output": raw}

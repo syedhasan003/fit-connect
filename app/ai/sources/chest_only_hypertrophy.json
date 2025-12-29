@@ -1,0 +1,34 @@
+{
+    "id": "chest_only_hypertrophy",
+    "topic": "workout",
+    "day": "Chest",
+    "primary_muscle_group": "chest",
+    "muscle_groups": ["chest"],
+    "goal": "Muscle Hypertrophy",
+    "experience_level": "Beginner",
+    "exercises": [
+      {
+        "name": "Barbell Bench Press",
+        "sets": 3,
+        "reps": "8–12",
+        "rest": "2–3 min",
+        "equipment": ["Barbell", "Bench"]
+      },
+      {
+        "name": "Incline Dumbbell Press",
+        "sets": 3,
+        "reps": "8–12",
+        "rest": "2 min",
+        "equipment": ["Dumbbells", "Incline Bench"]
+      },
+      {
+        "name": "Cable Fly",
+        "sets": 2,
+        "reps": "12–15",
+        "rest": "90 sec",
+        "equipment": ["Cable Machine"]
+      }
+    ],
+    "source": "NSCA / ACSM consensus",
+    "url": "https://www.nsca.com/education/articles/"
+  }

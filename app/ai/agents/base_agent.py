@@ -1,6 +1,7 @@
 import json
 from app.ai.orchestrator.llm_engine import LLMEngine
 
+
 class BaseAgent:
     def __init__(self, system_prompt_path: str):
         self.system_prompt = self._load_prompt(system_prompt_path)

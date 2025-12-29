@@ -14,32 +14,23 @@ class CentralRAGOrchestrator:
         intent = classify_intent(query)
         ql = query.lower()
 
-        # --------------------------------------------------
-        # REMINDERS (handled by reminder agent later)
-        # --------------------------------------------------
+        # ---------------- REMINDER / SYSTEM ----------------
         if intent in (Intent.REMINDER_CREATE, Intent.REMINDER_LIST):
             return {
-                "answer": "Reminder noted. I’ll handle that for you.",
+                "answer": "Reminder noted.",
                 "_intent": intent.value,
                 "_trust_state": "allowed"
             }
 
-        # --------------------------------------------------
-        # LLM-ONLY (motivation / casual coaching)
-        # --------------------------------------------------
+        # ---------------- LLM ONLY ----------------
         if intent == Intent.LLM_ONLY:
             return {
-                "answer": (
-                    "Alright. You showed up — that already counts. "
-                    "What’s one small win you’re going for today?"
-                ),
+                "answer": "What goal would you like help with today?",
                 "_intent": "llm_only",
                 "_trust_state": "allowed"
             }
 
-        # --------------------------------------------------
-        # RAG QUESTIONS (facts, workouts, diets)
-        # --------------------------------------------------
+        # ---------------- RAG PATH ----------------
         chunks = self.retriever.retrieve(query)
 
         if not chunks:
@@ -48,9 +39,7 @@ class CentralRAGOrchestrator:
         synthesis = build_answer(query, chunks)
         confidence = synthesis.get("_confidence", 0.0)
 
-        # --------------------------------------------------
-        # MEDICAL SAFETY HARD BLOCK
-        # --------------------------------------------------
+        # -------- MEDICAL SAFETY HARD BLOCK --------
         if any(x in ql for x in ("cancer", "cure", "disease")) and confidence < 0.8:
             return safe_fallback("medical_safety")
 
@@ -58,19 +47,22 @@ class CentralRAGOrchestrator:
             "type": synthesis.get("type"),
             "summary": synthesis.get("summary"),
             "data": synthesis.get("data"),
-            "saveable": True,
             "confidence": confidence,
             "sources": synthesis.get("sources", []),
-            "_intent": "rag_question",
+            "_intent": "rag",
             "_trust_state": "allowed"
         }
 
-        # --------------------------------------------------
-        # PRESENTATION LAYER (Step 6B)
-        # --------------------------------------------------
         response = build_presentation(response)
-
-        # --------------------------------------------------
-        # FINAL TRUST GATE
-        # --------------------------------------------------
         return trust_gate(response)
+
+
+# 🔒 SINGLE STABLE ENTRYPOINT
+_orchestrator = CentralRAGOrchestrator()
+
+
+def answer_with_rag_and_trust(user_query: str) -> dict:
+    """
+    DO NOT CHANGE THIS SIGNATURE.
+    """
+    return _orchestrator.answer(user_query)

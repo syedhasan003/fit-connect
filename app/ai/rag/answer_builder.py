@@ -28,95 +28,62 @@ def build_answer(query: str, chunks: List[Dict]) -> Dict:
     # ----------------------------
     # SOURCES
     # ----------------------------
-    sources = []
-    for c in chunks:
-        if c.get("source") and c.get("url"):
-            sources.append({
-                "source": c["source"],
-                "url": c["url"]
-            })
+    sources = [
+        {"source": c["source"], "url": c["url"]}
+        for c in chunks
+        if c.get("source") and c.get("url")
+    ]
 
     # ----------------------------
-    # NUTRITION
-    # --------------------------
-    if any(k in query_l for k in ("protein", "diet", "nutrition", "calories", "keto")):
-        nutrition_chunks = [c for c in chunks if c.get("topic") == "nutrition"]
+    # DETECT REQUESTED MUSCLES
+    # ----------------------------
+    muscle_map = {
+        "chest": "chest",
+        "triceps": "triceps",
+        "biceps": "biceps",
+        "back": "back",
+        "shoulder": "shoulders",
+        "shoulders": "shoulders",
+        "legs": "legs",
+        "quads": "legs",
+        "hamstrings": "legs",
+    }
 
-        if not nutrition_chunks:
-            return {
-                "type": "general",
-                "summary": "I don’t have strong enough evidence to answer that confidently yet.",
-                "data": {},
-                "_confidence": 0.0,
-                "_has_evidence": False,
-                "sources": sources
-            }
-
-        record = nutrition_chunks[0]
-
-        return {
-            "type": "diet_plan",
-            "summary": (
-                "Adequate daily protein intake and even distribution across meals "
-                "are key for muscle growth."
-            ),
-            "data": record,
-            "_confidence": 0.9,
-            "_has_evidence": True,
-            "sources": sources,
-            "presentation": {
-                "tone": "coach",
-                "format": "table",
-              "cta": "Save diet to Library"
-            }
-        }
+    requested_muscles = {
+        v for k, v in muscle_map.items() if k in query_l
+    }
 
     # ----------------------------
-    # WORKOUTS
+    # WORKOUT PATH
     # ----------------------------
-    if any(k in query_l for k in ("workout", "hypertrophy", "exercise", "train")):
-        muscle_map = {
-            "shoulder": "shoulders",
-            "shoulders": "shoulders",
-            "back": "back",
-            "biceps": "biceps",
-            "chest": "chest",
-            "triceps": "triceps",
-            "legs": "legs"
-        }
+    if any(k in query_l for k in ("workout", "exercise", "train", "hypertrophy")):
+        record = chunks[0]
+        exercises = record.get("exercises", [])
 
-        requested = None
-        for k, v in muscle_map.items():
-            if k in query_l:
-                requested = v
-                break
+        # 🔒 FILTER EXERCISES BY REQUESTED MUSCLE
+        if requested_muscles:
+            filtered_exercises = []
+            for ex in exercises:
+                name = ex.get("name", "").lower()
 
-        filtered = []
-        for c in chunks:
-            pmg = c.get("primary_muscle_group", "").lower()
-            if requested and requested in pmg:
-                filtered.append(c)
+                # simple, deterministic name-based filtering
+                if "tricep" in name and "triceps" not in requested_muscles:
+                    continue
+                if "bicep" in name and "biceps" not in requested_muscles:
+                    continue
 
-        if not filtered:
-            return {
-                "type": "general",
-                "summary": "I don’t have strong enough evidence to answer that confidently yet.",
-              "data": {},
-                "_confidence": 0.0,
-                "_has_evidence": False,
-                "sources": sources
-            }
-
-        record = filtered[0]
+                filtered_exercises.append(ex)
+        else:
+            filtered_exercises = exercises
 
         return {
             "type": "workout_plan",
-            "summary": f"{record.get('day')} focused hypertrophy session.",
+            "summary": f"{record.get('primary_muscle_group', '').title()} focused hypertrophy session.",
             "data": {
                 "goal": record.get("goal"),
-                "muscle_group": record.get("primary_muscle_group"),
+                "primary_muscle_group": record.get("primary_muscle_group"),
                 "experience_level": record.get("experience_level"),
-                "exercises": record.get("exercises", [])
+                "exercises": filtered_exercises,
             },
             "_confidence": 0.9,
             "_has_evidence": True,
@@ -133,7 +100,7 @@ def build_answer(query: str, chunks: List[Dict]) -> Dict:
     # ----------------------------
     return {
         "type": "general",
-        "summary": "Here’s what current evidencsuggests.",
+        "summary": "Here’s what current evidence suggests.",
         "data": {},
         "_confidence": 0.0,
         "_has_evidence": False,
