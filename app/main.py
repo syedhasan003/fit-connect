@@ -18,8 +18,6 @@ from app.routers import progress as progress_router
 from app.routers import health_profile as health_profile_router
 from app.routers import health_memory
 from app.routers import reminders
-from app.routers import reminder_actions
-from app.routers.reminder_ack import router as reminder_ack_router
 from app.routes import internal
 from app.routers.library import router as library_router
 from app.routers import library
@@ -30,6 +28,7 @@ from app.routers import reminder_reasoning
 from app.routers import onboarding_health
 from app.routers import reminder_behavior
 from app.routers import ai_adaptation
+from app.ai.routers import central_summary
 # Static files (for images, videos, media)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -48,8 +47,6 @@ app.include_router(progress_router.router)
 app.include_router(health_profile_router.router)
 app.include_router(health_memory.router)
 app.include_router(reminders.router)
-app.include_router(reminder_actions.router)
-app.include_router(reminder_ack_router)
 app.include_router(internal.router)
 app.include_router(library_router)
 app.include_router(library.router)
@@ -60,6 +57,7 @@ app.include_router(reminder_reasoning.router)
 app.include_router(onboarding_health.router)
 app.include_router(reminder_behavior.router)
 app.include_router(ai_adaptation.router)
+app.include_router(central_summary.router)
 # include gallery router separately (avoid circular import)
 from app.routers import gallery as gallery_router
 app.include_router(gallery_router.router)

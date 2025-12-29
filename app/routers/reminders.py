@@ -12,6 +12,9 @@ from app.services.reminder_followup import trigger_ai_followup
 router = APIRouter(prefix="/reminders", tags=["Reminders"])
 
 
+# -------------------------------------------------
+# CREATE REMINDER
+# -------------------------------------------------
 @router.post("/", response_model=dict)
 def create_reminder(
     payload: ReminderCreate,
@@ -41,14 +44,20 @@ def create_reminder(
     }
 
 
+# -------------------------------------------------
+# LIST REMINDERS
+# -------------------------------------------------
 @router.get("/", response_model=list)
 def get_reminders(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    reminders = db.query(Reminder).filter(
-        Reminder.user_id == current_user.id
-    ).all()
+    reminders = (
+        db.query(Reminder)
+        .filter(Reminder.user_id == current_user.id)
+        .order_by(Reminder.scheduled_at.asc())
+        .all()
+    )
 
     return [
         {
@@ -63,43 +72,95 @@ def get_reminders(
     ]
 
 
+# -------------------------------------------------
+# ACKNOWLEDGE REMINDER (USER DID IT)
+# -------------------------------------------------
 @router.post("/{reminder_id}/acknowledge")
 def acknowledge_reminder(
     reminder_id: int,
-    payload: dict,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    reminder = db.query(Reminder).filter(
-        Reminder.id == reminder_id,
-        Reminder.user_id == current_user.id
-    ).first()
+    reminder = (
+        db.query(Reminder)
+        .filter(
+            Reminder.id == reminder_id,
+            Reminder.user_id == current_user.id,
+        )
+        .first()
+    )
 
     if not reminder:
         raise HTTPException(status_code=404, detail="Reminder not found")
 
-    acknowledged = payload.get("acknowledged", False)
-
-    reminder_log = ReminderLog(
+    log = ReminderLog(
         reminder_id=reminder.id,
         user_id=current_user.id,
-        acknowledged=acknowledged,
+        acknowledged=True,
         acknowledged_at=datetime.utcnow(),
     )
 
-    db.add(reminder_log)
+    db.add(log)
     db.commit()
-    db.refresh(reminder_log)
+    db.refresh(log)
 
     ai_result = trigger_ai_followup(
         db=db,
         reminder=reminder,
-        reminder_log=reminder_log
+        reminder_log=log,
     )
 
     return {
-        "status": "acknowledged" if acknowledged else "missed",
+        "status": "acknowledged",
         "reminder_id": reminder.id,
-        "log_id": reminder_log.id,
-        "ai_followup": ai_result
+        "log_id": log.id,
+        "ai_followup": ai_result,
+    }
+
+
+# -------------------------------------------------
+# MARK REMINDER AS MISSED
+# -------------------------------------------------
+@router.post("/{reminder_id}/missed")
+def mark_reminder_missed(
+    reminder_id: int,
+    reason: str | None = None,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    reminder = (
+        db.query(Reminder)
+        .filter(
+            Reminder.id == reminder_id,
+            Reminder.user_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not reminder:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+
+    log = ReminderLog(
+        reminder_id=reminder.id,
+        user_id=current_user.id,
+        acknowledged=False,
+        missed_reason=reason,
+        acknowledged_at=datetime.utcnow(),
+    )
+
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+
+    ai_result = trigger_ai_followup(
+        db=db,
+        reminder=reminder,
+        reminder_log=log,
+    )
+
+    return {
+        "status": "missed",
+        "reminder_id": reminder.id,
+        "reason": reason,
+        "ai_followup": ai_result,
     }
