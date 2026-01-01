@@ -1,7 +1,9 @@
 from typing import List, Dict
 from copy import deepcopy
+from datetime import date
 
-from app.tasks.models.enums import TaskType
+from app.tasks.models.task import Task
+from app.tasks.models.enums import TaskType, TaskStatus
 from app.exercise_intelligence.models.exercise import Exercise
 from app.ai.central_adaptation.exercise_substitution import (
     suggest_exercise_substitution,
@@ -10,70 +12,139 @@ from app.ai.central_adaptation.exercise_substitution import (
 
 def apply_adaptive_decisions(
     *,
-    tasks: List,
+    tasks: List[Task],
     decisions: List[Dict],
     all_exercises: List[Exercise],
 ) -> List[Dict]:
     """
-    Applies adaptive decisions to today's tasks.
+    PRODUCTION Plan Executor.
 
-    Returns MODIFIED task payloads (no DB writes here).
+    - Applies at most ONE safe mutation per eligible task
+    - NEVER writes to DB
+    - NEVER mutates completed or future tasks
+    - Returns explainable diffs only
     """
 
-    updated_tasks = []
+    results: List[Dict] = []
 
     for task in tasks:
-        task_payload = deepcopy(task.planned_payload or {})
-        task_type = task.task_type
+        if not _is_task_eligible(task):
+            continue
+
+        original_payload = task.planned_payload or {}
+        updated_payload = deepcopy(original_payload)
+
+        applied_action = None
+        applied_reason = None
+        requires_confirmation = False
 
         for decision in decisions:
             action = decision.get("action")
+            reason = decision.get("reason", "Behavioral adjustment")
 
-            # ------------------------------------
-            # WORKOUT ADAPTATIONS
-            # ------------------------------------
-            if task_type == TaskType.workout:
+            # ---------------- WORKOUT ----------------
+            if task.task_type == TaskType.workout:
 
                 if action == "reduce_workout_intensity":
-                    # Reduce volume safely
-                    if "sets" in task_payload:
-                        task_payload["sets"] = max(1, task_payload["sets"] - 1)
-
-                    task_payload["intensity_note"] = "Reduced due to missed sessions"
-
-                if action == "simplify_workout_plan":
-                    task_payload["simplified"] = True
+                    _reduce_workout_intensity(updated_payload)
+                    applied_action = action
+                    applied_reason = reason
+                    break
 
                 if action == "substitute_exercise":
-                    failed_id = task_payload.get("exercise_id")
-                    failed = next(
-                        (e for e in all_exercises if e.id == failed_id),
-                        None
+                    substituted = _substitute_exercise(
+                        updated_payload,
+                        all_exercises,
                     )
-                    if failed:
-                        replacement = suggest_exercise_substitution(
-                            failed_exercise=failed,
-                            all_exercises=all_exercises,
-                        )
-                        if replacement:
-                            task_payload["exercise_id"] = replacement.id
-                            task_payload["substituted"] = True
+                    if substituted:
+                        applied_action = action
+                        applied_reason = reason
+                        requires_confirmation = True
+                        break
 
-            # ------------------------------------
-            # DIET ADAPTATIONS
-            # ------------------------------------
-            if task_type == TaskType.diet:
+            # ---------------- DIET ----------------
+            if task.task_type == TaskType.diet:
 
                 if action == "simplify_diet_plan":
-                    if "calories" in task_payload:
-                        task_payload["calories"] = int(task_payload["calories"] * 0.9)
+                    _simplify_diet_plan(updated_payload)
+                    applied_action = action
+                    applied_reason = reason
+                    break
 
-                    task_payload["note"] = "Simplified for better adherence"
+        if applied_action:
+            results.append({
+                "task_id": str(task.id),
+                "task_type": task.task_type.value,
+                "original_payload": original_payload,
+                "updated_payload": updated_payload,
+                "action": applied_action,
+                "reason": applied_reason,
+                "requires_confirmation": requires_confirmation,
+                "applied_at": date.today().isoformat(),
+            })
 
-        updated_tasks.append({
-            "task_id": str(task.id),
-            "task_type": task_type.value,
-            "updated_payload": task_payload,
-        })
+    return results
 
-    return updated_tasks
+
+# -------------------------------------------------
+# Eligibility Rules
+# -------------------------------------------------
+
+def _is_task_eligible(task: Task) -> bool:
+    if task.status == TaskStatus.completed:
+        return False
+
+    if not task.planned_payload:
+        return False
+
+    if task.scheduled_for != date.today():
+        return False
+
+    return True
+
+
+# -------------------------------------------------
+# Action Handlers (SAFE MUTATIONS ONLY)
+# -------------------------------------------------
+
+def _reduce_workout_intensity(payload: Dict) -> None:
+    if "sets" in payload and isinstance(payload["sets"], int):
+        payload["sets"] = max(1, payload["sets"] - 1)
+
+    payload["ai_modified"] = True
+    payload["ai_note"] = "Workout intensity reduced due to missed sessions"
+
+
+def _simplify_diet_plan(payload: Dict) -> None:
+    if "calories" in payload and isinstance(payload["calories"], int):
+        payload["calories"] = int(payload["calories"] * 0.9)
+
+    payload["ai_modified"] = True
+    payload["ai_note"] = "Diet plan simplified for better adherence"
+
+
+def _substitute_exercise(
+    payload: Dict,
+    all_exercises: List[Exercise],
+) -> bool:
+    exercise_id = payload.get("exercise_id")
+    if not exercise_id:
+        return False
+
+    failed = next((e for e in all_exercises if e.id == exercise_id), None)
+    if not failed:
+        return False
+
+    replacement = suggest_exercise_substitution(
+        failed_exercise=failed,
+        all_exercises=all_exercises,
+    )
+
+    if not replacement:
+        return False
+
+    payload["exercise_id"] = replacement.id
+    payload["ai_modified"] = True
+    payload["ai_note"] = "Exercise substituted to reduce fatigue"
+
+    return True
