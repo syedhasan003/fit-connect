@@ -27,6 +27,11 @@ from app.ai.memory.context_builder import ContextBuilder
 from app.ai.memory.memory_writer import persist_health_memory
 
 # -------------------------------------------------
+# Presentation / Answer Curation (NEW – SAFE)
+# -------------------------------------------------
+from app.ai.orchestrator.response_assembler import assemble_curated_responses
+
+# -------------------------------------------------
 # Worker agents
 # -------------------------------------------------
 from app.ai.agents.coach_agent import CoachAgent
@@ -187,6 +192,9 @@ async def orchestrate(
         "context": context,
     }
 
+    # -------------------------------------------------
+    # CENTRAL AGENT EXECUTION
+    # -------------------------------------------------
     result = await central.handle(payload)
 
     # -------------------------------------------------
@@ -202,4 +210,21 @@ async def orchestrate(
         db=db,
     )
 
-    return result
+    # -------------------------------------------------
+    # CURATED USER RESPONSES (SAFE OUTPUT)
+    # -------------------------------------------------
+    decisions = (
+        result.get("final", {})
+        .get("decisions", [])
+    )
+
+    curated_responses = assemble_curated_responses(
+        decisions=decisions
+    )
+
+    return {
+        "status": "ok",
+        "goal": req.goal,
+        "responses": curated_responses,
+        "raw": result,  # retained for debugging / admin tools
+    }
