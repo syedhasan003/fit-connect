@@ -10,6 +10,13 @@ from app.models.gym import Gym
 from app.deps import get_current_user, require_gym_owner_or_admin
 from app.services.roles import require_roles
 from app.models.user import User
+
+# DB MODELS (THIS WAS MISSING)
+from app.models.gym_amenities import GymAmenities
+from app.models.gym_equipment import GymEquipment
+from app.models.gym_pricing import GymPricing
+from app.models.gym_trainer import GymTrainer
+
 from app.schemas.gym_amenities import GymAmenitiesOut
 from app.schemas.gym_equipment import GymEquipmentOut
 from app.schemas.gym_pricing import GymPricingOut
