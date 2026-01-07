@@ -1,26 +1,26 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import Home from "./screens/Home/Home";
-import Coach from "./screens/Coach/Coach";
-import Feed from "./screens/Feed/Feed";
-import Profile from "./screens/Profile/Profile";
-import BottomNav from "./components/navigation/BottomNav";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import AppLayout from "./components/layout/AppLayout";
+
+import Home from "./screens/Home";
+import Discovery from "./screens/Discovery";
+import Central from "./screens/Central";
+import Vault from "./screens/Vault";
+import Profile from "./screens/Profile";
+import GymDetail from "./screens/GymDetail";
 
 export default function App() {
   return (
-    <Router>
-      <div className="min-h-screen bg-neutral-900 text-slate-100">
-        <header className="hidden" /> {/* optional top nav later */}
-        <main className="pb-28"> {/* bottom nav height spacing */}
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/coach" element={<Coach />} />
-            <Route path="/feed" element={<Feed />} />
-            <Route path="/profile" element={<Profile />} />
-          </Routes>
-        </main>
-
-        <BottomNav />
-      </div>
-    </Router>
+    <BrowserRouter>
+      <Routes>
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/discovery" element={<Discovery />} />
+          <Route path="/gym/:gymId" element={<GymDetail />} />
+          <Route path="/central" element={<Central />} />
+          <Route path="/vault" element={<Vault />} />
+          <Route path="/profile" element={<Profile />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
 }
