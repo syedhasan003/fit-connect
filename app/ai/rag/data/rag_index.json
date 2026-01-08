@@ -1,0 +1,229 @@
+[
+  {
+    "id": "progressive_overload",
+    "topic": "workouts",
+    "claim": "Progressive overload\u2014gradually increasing training volume, intensity, or load\u2014is necessary to stimulate muscle growth over time.",
+    "evidence": "Longitudinal resistance training studies",
+    "source": "National Strength and Conditioning Association (NSCA)",
+    "url": "https://www.nsca.com/education/articles/"
+  },
+  {
+    "id": "training_volume_hypertrophy",
+    "topic": "workouts",
+    "claim": "Training each muscle group with 10\u201320 weekly sets is associated with greater hypertrophy in trained individuals.",
+    "evidence": "Meta-analysis of resistance training volume",
+    "source": "Journal of Strength and Conditioning Research",
+    "url": "https://journals.lww.com/nsca-jscr"
+  },
+  {
+    "id": "protein_intake_hypertrophy",
+    "topic": "nutrition",
+    "claim": "For maximizing muscle hypertrophy, daily protein intake of approximately 1.6\u20132.2 grams per kilogram of body weight is recommended for resistance-trained individuals.",
+    "evidence": "Systematic review and meta-analysis of resistance training studies",
+    "source": "International Society of Sports Nutrition (ISSN)",
+    "url": "https://jissn.biomedcentral.com/articles/10.1186/s12970-017-0177-8"
+  },
+  {
+    "id": "protein_distribution",
+    "topic": "nutrition",
+    "claim": "Distributing protein intake evenly across meals (20\u201340 g per meal) supports muscle protein synthesis throughout the day.",
+    "evidence": "Controlled feeding trials in healthy adults",
+    "source": "American College of Sports Medicine (ACSM)",
+    "url": "https://journals.lww.com/acsm-msse"
+  },
+  {
+    "id": "back_biceps_hypertrophy_bro_split",
+    "topic": "workouts",
+    "primary_muscle_group": "back and biceps",
+    "split": "bro_split",
+    "day": "Back + Biceps",
+    "goal": "Muscle Growth",
+    "experience_level": "Intermediate",
+    "claim": "A back and biceps bro split emphasizing vertical and horizontal pulling maximizes hypertrophy when volume is sufficient and sets are taken close to failure.",
+    "evidence": "Back and biceps hypertrophy is optimized through compound pulling movements, varied angles, and proximity to muscular failure with adequate rest intervals.",
+    "exercises": [
+      {
+        "name": "Pull-Up / Lat Pulldown",
+        "sets": 3,
+        "reps": "Near failure",
+        "rest": "2\u20133 min",
+        "equipment": [
+          "Pull-Up Bar",
+          "Lat Pulldown Machine"
+        ]
+      },
+      {
+        "name": "Barbell Row",
+        "sets": 3,
+        "reps": "Near failure",
+        "rest": "2\u20133 min",
+        "equipment": [
+          "Barbell"
+        ]
+      },
+      {
+        "name": "Dumbbell Curl",
+        "sets": 3,
+        "reps": "Near failure",
+        "rest": "60\u201390 sec",
+        "equipment": [
+          "Dumbbells"
+        ]
+      }
+    ],
+    "source": "Journal of Strength and Conditioning Research",
+    "url": "https://journals.lww.com/nsca-jscr"
+  },
+  {
+    "id": "chest_triceps_hypertrophy",
+    "topic": "workout",
+    "day": "Chest + Triceps",
+    "primary_muscle_group": "chest",
+    "muscle_groups": [
+      "chest",
+      "triceps"
+    ],
+    "goal": "Muscle Hypertrophy",
+    "experience_level": "Intermediate",
+    "exercises": [
+      {
+        "name": "Barbell Bench Press",
+        "sets": 3,
+        "reps": "Near failure",
+        "rest": "2\u20133 min",
+        "equipment": [
+          "Barbell",
+          "Bench"
+        ],
+        "notes": "Focus on controlled eccentric and full range of motion."
+      },
+      {
+        "name": "Incline Dumbbell Press",
+        "sets": 3,
+        "reps": "Near failure",
+        "rest": "2 min",
+        "equipment": [
+          "Dumbbells",
+          "Incline Bench"
+        ],
+        "notes": "Emphasize upper chest; stop 1 rep before form breakdown."
+      },
+      {
+        "name": "Cable Fly",
+        "sets": 2,
+        "reps": "Near failure",
+        "rest": "90 sec",
+        "equipment": [
+          "Cable Machine"
+        ],
+        "notes": "Constt tension; slow squeeze at peak contraction."
+      },
+      {
+        "name": "Triceps Pushdown",
+        "sets": 3,
+        "reps": "Near failure",
+        "rest": "90 sec",
+        "equipment": [
+          "Cable Machine"
+        ],
+        "notes": "Elbows locked in; avoid shoulder movement."
+      }
+    ],
+    "source": "NSCA / ACSM consensus",
+    "url": "https://www.nsca.com/education/articles/"
+  },
+  {
+    "id": "shoulders_hypertrophy_bro_split",
+    "topic": "workouts",
+    "primary_muscle_group": "shoulders",
+    "split": "bro_split",
+    "day": "Shoulders",
+    "goal": "Hypertrophy",
+    "experience_level": "Intermediate",
+    "claim": "A shoulder-focused workout emphasizing overhead pressing and lateral raises maximizes deltoid hypertrophy when sets are taken close to failure.",
+    "evidence": "Shoulder hypertrophy is driven by sufficient pressing volume and lateral raise variations performed near muscular failure with controlled tempo.",
+    "exercises": [
+      {
+        "name": "Overhead Press",
+        "sets": 3,
+        "reps": "Near failure",
+        "rest": "2\u20133 min",
+        "equipment": [
+          "Barbell",
+          "Dumbbells"
+        ]
+      },
+      {
+        "name": "Dumbbell Lateral Raise",
+        "sets": 4,
+        "reps": "Near failure",
+        "rest": "60\u201390 sec",
+        "equipment": [
+          "Dumbbells"
+        ]
+      }
+    ],
+    "source": "Journal of Strength and Conditioning Research",
+    "url": "https://journals.lww.com/nsca-jscr"
+  },
+  {
+    "id": "cancer_exercise_warning",
+    "topic": "safety",
+    "claim": "Exercise and nutrition strategies should not be presented as treatments or cures for cancer, which requires medical diagnosis and treatment by qualified healthcare professionals.",
+    "evidence": "Clinical oncology guidelines",
+    "source": "American Cancer Society",
+    "url": "https://www.cancer.org"
+  },
+  {
+    "id": "sleep_muscle_recovery",
+    "topic": "recovery",
+    "claim": "Adequate sleep (7\u20139 hours per night) supports muscle recovery and growth by regulating anabolic hormones such as growth hormone and testosterone.",
+    "evidence": "Sleep deprivation and hormonal regulation studies",
+    "source": "National Sleep Foundation",
+    "url": "https://www.sleepfoundation.org"
+  },
+  {
+    "id": "chest_only_hypertrophy",
+    "topic": "workout",
+    "day": "Chest",
+    "primary_muscle_group": "chest",
+    "muscle_groups": [
+      "chest"
+    ],
+    "goal": "Muscle Hypertrophy",
+    "experience_level": "Beginner",
+    "exercises": [
+      {
+        "name": "Barbell Bench Press",
+        "sets": 3,
+        "reps": "8\u201312",
+        "rest": "2\u20133 min",
+        "equipment": [
+          "Barbell",
+          "Bench"
+        ]
+      },
+      {
+        "name": "Incline Dumbbell Press",
+        "sets": 3,
+        "reps": "8\u201312",
+        "rest": "2 min",
+        "equipment": [
+          "Dumbbells",
+          "Incline Bench"
+        ]
+      },
+      {
+        "name": "Cable Fly",
+        "sets": 2,
+        "reps": "12\u201315",
+        "rest": "90 sec",
+        "equipment": [
+          "Cable Machine"
+        ]
+      }
+    ],
+    "source": "NSCA / ACSM consensus",
+    "url": "https://www.nsca.com/education/articles/"
+  }
+]

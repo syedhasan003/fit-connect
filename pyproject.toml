@@ -1,0 +1,14 @@
+[project]
+name = "fitconnect-backend"
+version = "0.1.0"
+description = "FastAPI backend for FitConnect"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    "sqlalchemy",
+    "python-dotenv"
+]
+
+[tool.uvicorn]
+reload = true
