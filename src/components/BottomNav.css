@@ -1,0 +1,23 @@
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background: rgba(0,0,0,0.85);
+  backdrop-filter: blur(20px);
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  z-index: 100;
+}
+
+.bottom-nav span {
+  font-size: 13px;
+  color: rgba(255,255,255,0.5);
+}
+
+.bottom-nav .active {
+  color: #ffffff;
+}

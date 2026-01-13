@@ -1,0 +1,84 @@
+.workout-builder {
+  padding: 40px;
+  color: white;
+}
+
+.day-card {
+  background: linear-gradient(145deg, #111, #1a1a1a);
+  border-radius: 20px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.day-header,
+.muscle-header,
+.exercise-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.exercise-card {
+  background: #0f0f0f;
+  border-radius: 14px;
+  padding: 16px;
+  margin: 12px 0;
+}
+
+.set-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+input, select {
+  background: #111;
+  border: 1px solid #333;
+  color: white;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+
+.icon-btn {
+  background: #222;
+  border: none;
+  color: #bbb;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: #333;
+  color: white;
+}
+
+.pill-btn {
+  background: white;
+  color: black;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 999px;
+  margin-top: 8px;
+  cursor: pointer;
+}
+
+.pill-btn.wide {
+  width: 100%;
+  margin-top: 24px;
+}
+
+.save-floating {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  background: white;
+  color: black;
+  border: none;
+  padding: 14px 24px;
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
+}

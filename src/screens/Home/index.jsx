@@ -1,79 +1,96 @@
-import React from "react";
+import { useNavigate } from "react-router-dom";
+import BottomNav from "../../components/navigation/BottomNav";
+import "./home.css";
 
 export default function Home() {
+  const navigate = useNavigate();
+
   return (
-    <div className="home-root">
-      {/* TODAY */}
-      <section className="section">
-        <h2 className="section-title">Today</h2>
-
-        <div className="card today-card">
-          <div className="today-row">
-            <span>Workout</span>
-            <span className="status pending">Pending</span>
+    <>
+      <main className="home">
+        {/* Header */}
+        <header className="home-header">
+          <div className="avatar" />
+          <div>
+            <h1>Lewis Tarun</h1>
+            <p className="muted">Dashboard overview</p>
           </div>
-          <div className="today-row">
-            <span>Diet</span>
-            <span className="status warning">Not created</span>
+        </header>
+
+        {/* Today */}
+        <section>
+          <h2>Today</h2>
+          <div className="card">
+            <div className="row">
+              <span>Workout</span>
+              <span className="status">Pending</span>
+            </div>
+            <div className="row">
+              <span>Diet</span>
+              <span className="muted">Not created</span>
+            </div>
+            <div className="row">
+              <span>Reminder</span>
+              <span className="muted">1 missed</span>
+            </div>
           </div>
-          <div className="today-row">
-            <span>Reminder</span>
-            <span className="status danger">1 missed</span>
+        </section>
+
+        {/* Reminders */}
+        <section>
+          <h2>Reminders</h2>
+          <div className="card center">
+            <p>You have 2 active reminders</p>
+            <button className="primary">Create reminder</button>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* REMINDERS */}
-      <section className="section">
-        <h2 className="section-title">Reminders</h2>
+        {/* Create */}
+        <section>
+          <h2>Create</h2>
+          <div className="grid">
+            {/* Workout */}
+            <div
+              className="card clickable"
+              onClick={() => navigate("/workout-builder")}
+            >
+              <small>CREATE</small>
+              <h3>Workout</h3>
+              <p
+                className="link"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate("/central");
+                }}
+              >
+                Open Central →
+              </p>
+            </div>
 
-        <div className="card reminder-card">
-          <div className="reminder-header">
-            You have <strong>2 active reminders</strong>
+            {/* Diet */}
+            <div
+              className="card clickable"
+            onClick={() => navigate("/central")}
+            >
+              <small>CREATE</small>
+              <h3>Diet Plan</h3>
+              <p className="link">Open Central →</p>
+            </div>
           </div>
+        </section>
 
-          <button className="reminder-button">
-            Create reminder
-          </button>
-        </div>
-      </section>
-
-      {/* CREATE */}
-      <section className="section">
-        <h2 className="section-title">Create</h2>
-
-        <div className="create-grid">
-          <div className="card create-card workout-card">
-            <span className="card-eyebrow">CREATE</span>
-            <h3>Workout</h3>
-            <span className="card-link">Open Central →</span>
+        {/* AI Insights */}
+        <section>
+          <h2>AI Insights</h2>
+          <div className="card muted">
+            Your workout consistency dropped compared to last week
           </div>
+        </section>
 
-          <div className="card create-card diet-card">
-            <span className="card-eyebrow">CREATE</span>
-            <h3>Diet plan</h3>
-            <span className="card-link">Open Central →</span>
-          </div>
-        </div>
-      </section>
+        <div style={{ height: "90px" }} />
+      </main>
 
-      {/* AI INSIGHTS */}
-      <section className="section">
-        <h2 className="section-title">AI insights</h2>
-
-        <div className="card insight-card">
-          Your workout consistency dropped compared to last week
-    </div>
-      </section>
-
-      {/* PROGRESS */}
-      <section className="section">
-        <h2 className="section-title">Progress</h2>
-
-        <div className="card progress-card">
-          Activity over time (last 7 days)
-        </div>
-      </section>
-    </div>
+      <BottomNav />
+    </>
   );
 }

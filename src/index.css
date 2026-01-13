@@ -1,154 +1,22 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+:root {
+  --bg: #000000;
+  --card: #111111;
+  --border: #1f1f1f;
+  --text: #ffffff;
+  --muted: #9a9a9a;
+  --accent: #ffffff;
+}
 
-/* --------------------
-   GLOBAL
----------------------*/
-body {
+* {
+  box-sizing: border-box;
+}
+
+html, body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
-    "Inter", system-ui, sans-serif;
-  background-color: #0b0b0b;
-  color: #ffffff;
-}
-
-.home-root {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 32px 20px 120px;
-}
-
-/* --------------------
-   SECTIONS
----------------------*/
-.section {
-  margin-bottom: 36px;
-}
-
-.section-title {
-  font-size: 18px;
-  font-weight: 600;
-  margin-bottom: 12px;
-}
-
-/* --------------------
-   CARDS (BASE)
----------------------*/
-.card {
-  border-radius: 18px;
-  padding: 18px 20px;
-}
-
-/* --------------------
-   TODAY CARD (WHITE)
----------------------*/
-.today-card {
-  background: #f4f3ef;
-  color: #111;
-}
-
-.today-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-.today-row:last-child {
-  border-bottom: none;
-}
-
-.status {
-  font-weight: 600;
-}
-
-.status.pending {
-  color: #c18a00;
-}
-
-.status.warning {
-  color: #b08900;
-}
-
-.status.danger {
-  color: #c43d3d;
-}
-
-/* --------------------
-   REMINDERS (YELLOW)
----------------------*/
-.reminder-card {
-  background: #f3d66b;
-  color: #111;
-}
-
-.reminder-header {
-  margin-bottom: 14px;
-}
-
-.reminder-button {
-  width: 100%;
-  padding: 12px;
-  border-radius: 14px;
-  border: none;
-  background: rgba(0, 0, 0, 0.15);
-  color: #111;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-/* --------------------
-   CREATE CARDS
----------------------*/
-.create-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-}
-
-.create-card {
-  cursor: pointer;
-}
-
-.card-eyebrow {
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  opacity: 0.7;
-}
-
-.card-link {
-  margin-top: 10px;
-  display: inline-block;
-  font-weight: 600;
-}
-
-/* RED — WORKOUT */
-.workout-card {
-  background: #e85c5c;
-  color: #111;
-}
-
-/* BLUE — DIET */
-.diet-card {
-  background: #7faad9;
-  color: #111;
-}
-
-/* ----------------
-   AI INSIGHTS (MAUVE)
----------------------*/
-.insight-card {
-  background: #bfa7e2;
-  color: #111;
-}
-
-/* --------------------
-   PROGRESS (BLUE)
----------------------*/
-.progress-card {
-  background: #88aedf;
-  color: #111;
-  text-align: center;
-  padding: 28px 20px;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont,
+    "SF Pro Text", "SF Pro Display",
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
