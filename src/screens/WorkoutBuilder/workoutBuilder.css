@@ -1,84 +1,110 @@
 .workout-builder {
-  padding: 40px;
-  color: white;
+  padding: 32px;
+  max-width: 1100px;
+  margin: auto;
+  color: #fff;
 }
 
 .day-card {
-  background: linear-gradient(145deg, #111, #1a1a1a);
-  border-radius: 20px;
+  background: radial-gradient(circle at top, #1c1c1c, #0c0c0c);
+  border-radius: 26px;
   padding: 24px;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
 
-.day-header,
-.muscle-header,
-.exercise-header {
+.row {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
+.muscle-block {
+  margin-top: 22px;
+}
+
+.area-block {
+  background: #121212;
+  border-radius: 18px;
+  padding: 18px;
+  margin-top: 14px;
+}
+
 .exercise-card {
   background: #0f0f0f;
-  border-radius: 14px;
-  padding: 16px;
-  margin: 12px 0;
+  border-radius: 16px;
+  padding: 14px;
+  margin-top: 12px;
 }
 
 .set-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr) auto;
+  gap: 8px;
+  margin-top: 8px;
 }
 
-input, select {
-  background: #111;
-  border: 1px solid #333;
-  color: white;
-  padding: 8px 10px;
-  border-radius: 10px;
+input {
+  background: #0b0b0b;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  padding: 10px;
+  color: #fff;
 }
 
 .icon-btn {
-  background: #222;
+  background: #1e1e1e;
   border: none;
-  color: #bbb;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  cursor: pointer;
-}
-
-.icon-btn:hover {
-  background: #333;
-  color: white;
-}
-
-.pill-btn {
-  background: white;
-  color: black;
-  border: none;
-  padding: 10px 16px;
   border-radius: 999px;
-  margin-top: 8px;
+  color: #fff;
+  padding: 6px 10px;
   cursor: pointer;
 }
 
-.pill-btn.wide {
+.pill {
+  background: #fff;
+  color: #000;
+  border-radius: 999px;
+  padding: 10px 20px;
+  border: none;
+}
+
+.pill.small {
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+.pill.ghost {
+  background: transparent;
+  color: #fff;
+  border: 1px solid #2a2a2a;
+}
+
+.pill.wide {
   width: 100%;
-  margin-top: 24px;
+  margin-top: 14px;
 }
 
-.save-floating {
+.pill.save {
   position: fixed;
-  bottom: 30px;
-  right: 30px;
-  background: white;
-  color: black;
+  bottom: 20px;
+  right: 20px;
+}
+
+.selector-list {
+  margin-top: 10px;
+  background: #0e0e0e;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+/* ✅ FIX: force vertical list */
+.selector-item {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  border-bottom: 1px solid #1f1f1f;
+  background: transparent;
+  color: #fff;
   border: none;
-  padding: 14px 24px;
-  border-radius: 999px;
-  font-weight: 600;
-  cursor: pointer;
+  text-align: left;
 }
