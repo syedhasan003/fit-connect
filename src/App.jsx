@@ -3,9 +3,10 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Home from "./screens/Home";
 import Discovery from "./screens/Discovery";
 import Central from "./screens/Central";
-import Profile from "./screens/Profile";
 import Vault from "./screens/Vault";
+import Profile from "./screens/Profile";
 import WorkoutBuilder from "./screens/WorkoutBuilder";
+import Diet from "./screens/Diet";
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="/vault" element={<Vault />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/workout-builder" element={<WorkoutBuilder />} />
+        <Route path="/diet/*" element={<Diet />} />
       </Routes>
     </BrowserRouter>
   );

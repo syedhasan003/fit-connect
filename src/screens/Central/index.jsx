@@ -1,3 +1,7 @@
 export default function Central() {
-  return <div className="p-4">Central</div>;
+  return (
+    <div style={{ padding: "24px", color: "#fff" }}>
+      Central AI (Diet + Workout advisor)
+    </div>
+  );
 }

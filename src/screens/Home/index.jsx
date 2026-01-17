@@ -8,7 +8,6 @@ export default function Home() {
   return (
     <>
       <main className="home">
-        {/* Header */}
         <header className="home-header">
           <div className="avatar" />
           <div>
@@ -17,7 +16,6 @@ export default function Home() {
           </div>
         </header>
 
-        {/* Today */}
         <section>
           <h2>Today</h2>
           <div className="card">
@@ -27,7 +25,7 @@ export default function Home() {
             </div>
             <div className="row">
               <span>Diet</span>
-              <span className="muted">Not created</span>
+              <span className="muted">1420 / 2400 kcal</span>
             </div>
             <div className="row">
               <span>Reminder</span>
@@ -36,54 +34,33 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Reminders */}
-        <section>
-          <h2>Reminders</h2>
-          <div className="card center">
-            <p>You have 2 active reminders</p>
-            <button className="primary">Create reminder</button>
-          </div>
-        </section>
-
-        {/* Create */}
         <section>
           <h2>Create</h2>
           <div className="grid">
-            {/* Workout */}
             <div
               className="card clickable"
               onClick={() => navigate("/workout-builder")}
             >
               <small>CREATE</small>
               <h3>Workout</h3>
-              <p
-                className="link"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate("/central");
-                }}
-              >
-                Open Central →
-              </p>
+              <p className="link">Open Central →</p>
             </div>
 
-            {/* Diet */}
             <div
               className="card clickable"
-            onClick={() => navigate("/central")}
+              onClick={() => navigate("/diet")}
             >
               <small>CREATE</small>
               <h3>Diet Plan</h3>
-              <p className="link">Open Central →</p>
+              <p className="link">Open Diet →</p>
             </div>
           </div>
         </section>
 
-        {/* AI Insights */}
         <section>
           <h2>AI Insights</h2>
           <div className="card muted">
-            Your workout consistency dropped compared to last week
+            Your calorie intake is consistent this week
           </div>
         </section>
 

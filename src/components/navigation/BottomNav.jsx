@@ -1,27 +1,20 @@
-import { NavLink } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import "../BottomNav.css";
 
 export default function BottomNav() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const isActive = (path) =>
+    location.pathname === path ? "active" : "";
+
   return (
-    <nav className="fixed bottom-0 left-0 right-0 h-16 bg-neutral-900 border-t border-neutral-800 flex justify-around items-center">
-      <NavLink to="/" className="text-sm text-neutral-400">
-        Home
-      </NavLink>
-
-      <NavLink to="/discovery" className="text-sm text-neutral-400">
-        Discover
-      </NavLink>
-
-      <NavLink to="/central" className="text-sm text-neutral-400">
-        Central
-      </NavLink>
-
-      <NavLink to="/vault" className="text-sm text-neutral-400">
-        Vault
-      </NavLink>
-
-      <NavLink to="/profile" className="text-sm text-neutral-400">
-        Profile
-      </NavLink>
+    <nav className="bottom-nav">
+      <span className={isActive("/")} onClick={() => navigate("/")}>Home</span>
+      <span className={isActive("/discover")} onClick={() => navigate("/discover")}>Discover</span>
+      <span className={isActive("/central")} onClick={() => navigate("/central")}>Central</span>
+      <span className={isActive("/vault")} onClick={() => navigate("/vault")}>Vault</span>
+      <span className={isActive("/profile")} onClick={() => navigate("/profile")}>Profile</span>
     </nav>
   );
 }

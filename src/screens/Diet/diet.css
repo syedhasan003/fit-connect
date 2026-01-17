@@ -1,0 +1,198 @@
+
+/* ===== Base ===== */
+
+.diet-screen {
+  padding: 20px;
+  color: white;
+}
+
+.diet-title {
+  font-size: 26px;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+
+/* ===== Intake Card ===== */
+
+.intake-card.premium {
+  display: flex;
+  gap: 22px;
+  align-items: center;
+  padding: 22px;
+  border-radius: 20px;
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,0.06),
+    rgba(255,255,255,0.02)
+  );
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,0.08);
+  margin-bottom: 18px;
+}
+
+.ring-wrap {
+  position: relative;
+  width: 120px;
+  height: 120px;
+}
+
+.ring-wrap svg {
+  transform: rotate(-90deg);
+}
+
+.ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.premium-center .ring-percent {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.premium-center .ring-sub {
+  font-size: 12px;
+  opacity: 0.6;
+  margin-top: -2px;
+}
+
+.intake-meta h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.intake-meta p {
+  margin: 4px 0;
+  opacity: 0.85;
+}
+
+.macros {
+  font-size: 13px;
+  opacity: 0.65;
+}
+
+/* ===== Actions ===== */
+
+.diet-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+button.primary {
+  background: white;
+  color: black;
+  border: none;
+  padding: 16px;
+  border-radius: 14px;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+button.primary.wide {
+  width: 100%;
+}
+
+button.ghost {
+  background: transparent;
+  color: white;
+  border: 1px solid rgba(255,255,255,0.25);
+  padding: 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+button.ghost.wide {
+  width: 100%;
+}
+
+/* ===== Meals ===== */
+
+.meal-card {
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,0.05),
+    rgba(255,255,255,0.02)
+  );
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
+  padding: 18px;
+  margin-bottom: 14px;
+}
+
+.meal-card .row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.meal-card h3 {
+  margin: 0;
+}
+
+.meal-card .muted {
+  opacity: 0.6;
+  margin-top: 8px;
+}
+
+/* ===== Calendar ===== */
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 12px;
+}
+
+.calendar-day {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.5;
+}
+
+.calendar-day.logged {
+  opacity: 1;
+}
+
+.calendar-day.today {
+  border-color: white;
+}
+
+.day-number {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.day-status {
+  font-size: 11px;
+  opacity: 0.6;
+  margin-top: 4px;
+}
+
+.today-dot {
+  position: absolute;
+  bottom: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: white;
+}
+
+/* ===== Utility ===== */
+
+.bottom-spacer {
+  height: 90px;
+}
+
