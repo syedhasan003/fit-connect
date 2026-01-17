@@ -6,9 +6,15 @@ export default function WorkoutBuilder() {
   const [days, setDays] = useState([{ muscles: [] }]);
   const [open, setOpen] = useState(null);
 
-  const addDay = () => setDays(d => [...d, { muscles: [] }]);
+  /* ---------- Day ---------- */
+
+  const addDay = () =>
+    setDays(prev => [...prev, { muscles: [] }]);
+
   const removeDay = d =>
     setDays(prev => prev.filter((_, i) => i !== d));
+
+  /* ---------- Muscle ---------- */
 
   const addMuscle = (d, name) => {
     setDays(prev =>
@@ -29,6 +35,8 @@ export default function WorkoutBuilder() {
           : day
       )
     );
+
+  /* ---------- Area ---------- */
 
   const addArea = (d, m, name) => {
     setDays(prev =>
@@ -56,16 +64,15 @@ export default function WorkoutBuilder() {
               ...day,
               muscles: day.muscles.map((mu, mi) =>
                 mi === m
-                  ? {
-                      ...mu,
-                      areas: mu.areas.filter((_, ai) => ai !== a)
-                    }
+                  ? { ...mu, areas: mu.areas.filter((_, ai) => ai !== a) }
                   : mu
               )
             }
           : day
       )
     );
+
+  /* ---------- Exercise ---------- */
 
   const addExercise = (d, m, a, name) => {
     setDays(prev =>
@@ -127,6 +134,8 @@ export default function WorkoutBuilder() {
       )
     );
 
+  /* ---------- Sets ---------- */
+
   const addSet = (d, m, a, e) =>
     setDays(prev =>
       prev.map((day, di) =>
@@ -163,7 +172,7 @@ export default function WorkoutBuilder() {
       )
     );
 
-  const updateSet = (d, m, a, e, s, k, v) =>
+  const updateSet = (d, m, a, e, s, key, value) =>
     setDays(prev =>
       prev.map((day, di) =>
         di === d
@@ -182,7 +191,9 @@ export default function WorkoutBuilder() {
                                   ? {
                                       ...ex,
                                       sets: ex.sets.map((set, si) =>
-                                        si === s ? { ...set, [k]: v } : set
+                                        si === s
+                                          ? { ...set, [key]: value }
+                                          : set
                                       )
                                     }
                                   : ex
@@ -231,6 +242,8 @@ export default function WorkoutBuilder() {
       )
     );
 
+  /* ---------- Render ---------- */
+
   return (
     <div className="workout-builder">
       <h1>Create Workout</h1>
@@ -244,19 +257,22 @@ export default function WorkoutBuilder() {
             )}
           </div>
 
-          <button className="pill wide" onClick={() => setOpen(`muscle-${d}`)}>
+          <button
+            className="pill wide"
+            onClick={() => setOpen(`muscle-${d}`)}
+          >
             + Add Muscle Group
           </button>
 
           {open === `muscle-${d}` && (
             <div className="selector-list">
-              {Object.keys(EXERCISES).map(m => (
+              {Object.keys(EXERCISES).map(muscle => (
                 <button
-                  key={m}
+                  key={muscle}
                   className="selector-item"
-                  onClick={() => addMuscle(d, m)}
+                  onClick={() => addMuscle(d, muscle)}
                 >
-                  {m}
+                  {muscle}
                 </button>
               ))}
             </div>
@@ -269,19 +285,22 @@ export default function WorkoutBuilder() {
                 <button className="icon-btn" onClick={() => removeMuscle(d, m)}>✕</button>
               </div>
 
-              <button className="pill ghost small" onClick={() => setOpen(`area-${d}-${m}`)}>
+              <button
+                className="pill ghost small"
+                onClick={() => setOpen(`area-${d}-${m}`)}
+              >
                 + Add Area
               </button>
 
               {open === `area-${d}-${m}` && (
                 <div className="selector-list">
-                  {Object.keys(EXERCISES[mus.name]).map(a => (
+                  {Object.keys(EXERCISES[mus.name]).map(area => (
                     <button
-                      key={a}
+                      key={area}
                       className="selector-item"
-                      onClick={() => addArea(d, m, a)}
+                      onClick={() => addArea(d, m, area)}
                     >
-                      {a}
+                      {area}
                     </button>
                   ))}
                 </div>
@@ -294,19 +313,22 @@ export default function WorkoutBuilder() {
                     <button className="icon-btn" onClick={() => removeArea(d, m, a)}>✕</button>
                   </div>
 
-                  <button className="pill small" onClick={() => setOpen(`ex-${d}-${m}-${a}`)}>
+                  <button
+                    className="pill small"
+                    onClick={() => setOpen(`ex-${d}-${m}-${a}`)}
+                  >
                     + Add Exercise
                   </button>
 
                   {open === `ex-${d}-${m}-${a}` && (
                     <div className="selector-list">
-                      {EXERCISES[mus.name][ar.name].map(ex => (
+                      {EXERCISES[mus.name][ar.name].map(exName => (
                         <button
-                          key={ex}
+                          key={exName}
                           className="selector-item"
-                          onClick={() => addExercise(d, m, a, ex)}
+                          onClick={() => addExercise(d, m, a, exName)}
                         >
-                          {ex}
+                          {exName}
                         </button>
                       ))}
                     </div>
@@ -316,19 +338,50 @@ export default function WorkoutBuilder() {
                     <div className="exercise-card" key={e}>
                       <div className="row">
                         <strong>{ex.name}</strong>
-                        <button className="icon-btn" onClick={() => removeExercise(d, m, a, e)}>✕</button>
+                        <button
+                          className="icon-btn"
+                          onClick={() => removeExercise(d, m, a, e)}
+                        >
+                          ✕
+                        </button>
                       </div>
 
                       {ex.sets.map((set, s) => (
                         <div className="set-row" key={s}>
-                          <input placeholder="Reps" value={set.reps} onChange={e => updateSet(d, m, a, e, s, "reps", e.target.value)} />
-                          <input placeholder="Weight" value={set.weight} onChange={e => updateSet(d, m, a, e, s, "weight", e.target.value)} />
-                          <input placeholder="RIR" value={set.rir} onChange={e => updateSet(d, m, a, e, s, "rir", e.target.value)} />
-                          <button className="icon-btn" onClick={() => removeSet(d, m, a, e, s)}>✕</button>
+                          <input
+                            placeholder="Reps"
+                            value={set.reps}
+                            onChange={ev =>
+                              updateSet(d, m, a, e, s, "reps", ev.target.value)
+                            }
+                          />
+                          <input
+                            placeholder="Weight"
+                            value={set.weight}
+                            onChange={ev =>
+                              updateSet(d, m, a, e, s, "weight", ev.target.value)
+                            }
+                          />
+                          <input
+                            placeholder="RIR"
+                            value={set.rir}
+                            onChange={ev =>
+                              updateSet(d, m, a, e, s, "rir", ev.target.value)
+                            }
+                          />
+                          <button
+                            className="icon-btn"
+                            onClick={() => removeSet(d, m, a, e, s)}
+                          >
+                            ✕
+                          </button>
                         </div>
                       ))}
 
-                      <button className="pill small ghost" onClick={() => addSet(d, m, a, e)}>
+                      <button
+                        className="pill small ghost"
+                        onClick={() => addSet(d, m, a, e)}
+                      >
                         + Add Set
                       </button>
                     </div>

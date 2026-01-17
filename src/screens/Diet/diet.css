@@ -1,46 +1,53 @@
-
-/* ===== Base ===== */
-
+/* ===== BASE ===== */
 .diet-screen {
-  padding: 20px;
-  color: white;
-}
-
-.diet-title {
-  font-size: 26px;
-  font-weight: 600;
-  margin-bottom: 20px;
-}
-
-/* ===== Intake Card ===== */
-
-.intake-card.premium {
+  min-height: 100vh;
+  padding: 32px 24px 140px;
   display: flex;
-  gap: 22px;
+  justify-content: center;
+  background: #000;
+  color: #fff;
+}
+
+.diet-wrapper {
+  width: 100%;
+  max-width: 960px;
+}
+
+/* ===== TITLES ===== */
+.diet-title {
+  font-size: 28px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.muted {
+  font-size: 13px;
+  opacity: 0.6;
+}
+
+/* ===== HERO / INTAKE ===== */
+.diet-hero-card {
+  display: flex;
+  gap: 32px;
+  padding: 28px;
+  border-radius: 28px;
+  background: radial-gradient(circle at top, #1c1c1c, #0b0b0b);
+  margin-bottom: 28px;
+}
+
+.hero-left {
+  display: flex;
   align-items: center;
-  padding: 22px;
-  border-radius: 20px;
-  background: linear-gradient(
-    180deg,
-    rgba(255,255,255,0.06),
-    rgba(255,255,255,0.02)
-  );
-  backdrop-filter: blur(14px);
-  border: 1px solid rgba(255,255,255,0.08);
-  margin-bottom: 18px;
+  justify-content: center;
 }
 
-.ring-wrap {
+.hero-ring {
   position: relative;
-  width: 120px;
-  height: 120px;
+  width: 110px;
+  height: 110px;
 }
 
-.ring-wrap svg {
-  transform: rotate(-90deg);
-}
-
-.ring-center {
+.hero-center {
   position: absolute;
   inset: 0;
   display: flex;
@@ -49,150 +56,143 @@
   justify-content: center;
 }
 
-.premium-center .ring-percent {
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -0.5px;
+.hero-center strong {
+  font-size: 22px;
 }
 
-.premium-center .ring-sub {
+.hero-center span {
   font-size: 12px;
   opacity: 0.6;
-  margin-top: -2px;
 }
 
-.intake-meta h2 {
-  margin: 0;
+.hero-right h2 {
   font-size: 18px;
+  margin-bottom: 6px;
 }
 
-.intake-meta p {
-  margin: 4px 0;
-  opacity: 0.85;
-}
-
-.macros {
-  font-size: 13px;
-  opacity: 0.65;
-}
-
-/* ===== Actions ===== */
-
-.diet-actions {
+.hero-actions {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin-top: 14px;
 }
 
-button.primary {
-  background: white;
-  color: black;
+/* ===== BUTTONS ===== */
+.primary {
+  background: #fff;
+  color: #000;
+  padding: 12px 18px;
+  border-radius: 999px;
+  font-weight: 500;
   border: none;
-  padding: 16px;
-  border-radius: 14px;
-  font-size: 15px;
-  cursor: pointer;
 }
 
-button.primary.wide {
-  width: 100%;
+.pill {
+  background: #1a1a1a;
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid #2a2a2a;
 }
 
-button.ghost {
+.pill.ghost {
   background: transparent;
-  color: white;
-  border: 1px solid rgba(255,255,255,0.25);
-  padding: 14px;
-  border-radius: 14px;
-  font-size: 14px;
-  cursor: pointer;
 }
 
-button.ghost.wide {
+.pill.small {
+  font-size: 13px;
+  padding: 6px 12px;
+}
+
+.wide {
   width: 100%;
 }
 
-/* ===== Meals ===== */
+/* ===== MEALS ===== */
+.diet-section {
+  margin-top: 32px;
+}
 
 .meal-card {
-  background: linear-gradient(
-    180deg,
-    rgba(255,255,255,0.05),
-    rgba(255,255,255,0.02)
-  );
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 16px;
-  padding: 18px;
-  margin-bottom: 14px;
+  background: linear-gradient(#141414, #0e0e0e);
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 12px;
 }
 
-.meal-card .row {
+.row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
 }
 
-.meal-card h3 {
-  margin: 0;
+/* ===== EMPTY ===== */
+.empty-state {
+  background: #0e0e0e;
+  border-radius: 18px;
+  padding: 20px;
+  text-align: center;
 }
 
-.meal-card .muted {
-  opacity: 0.6;
-  margin-top: 8px;
+/* ===== LOG FOOD ===== */
+.log-card {
+  background: linear-gradient(#141414, #0e0e0e);
+  border-radius: 22px;
+  padding: 22px;
+  margin-top: 24px;
 }
 
-/* ===== Calendar ===== */
-
-.calendar-grid {
+.log-inputs {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
 
+input {
+  background: #0b0b0b;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  padding: 10px;
+  color: #fff;
+}
+
+@media (max-width: 720px) {
+  .log-inputs {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== CALENDAR ===== */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 14px;
+  margin-top: 24px;
+}
+
 .calendar-day {
-  position: relative;
-  aspect-ratio: 1 / 1;
+  background: #0e0e0e;
   border-radius: 14px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.06);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.5;
+  padding: 16px 8px;
+  text-align: center;
 }
 
 .calendar-day.logged {
-  opacity: 1;
+  border: 1px solid #2a2a2a;
 }
 
-.calendar-day.today {
-  border-color: white;
-}
-
-.day-number {
+.day-num {
   font-size: 16px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .day-status {
+  display: block;
+  margin-top: 6px;
   font-size: 11px;
   opacity: 0.6;
-  margin-top: 4px;
 }
 
-.today-dot {
-  position: absolute;
-  bottom: 8px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: white;
-}
-
-/* ===== Utility ===== */
-
+/* ===== SPACER ===== */
 .bottom-spacer {
-  height: 90px;
+  height: 120px;
 }
-
