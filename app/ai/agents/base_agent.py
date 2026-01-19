@@ -18,12 +18,6 @@ class BaseAgent:
             return json.loads(raw)
         except Exception:
             return {
-                "title": "Let’s make this easier.",
                 "summary": raw,
-                "suggestions": [
-                    "Try asking more specifically.",
-                    "Tell me your goal, timeline, or preferences.",
-                    "Share your current habits so I can personalize better."
-                ],
-                "next_steps": "What would you like to focus on first?"
+                "confidence": 0.5
             }

@@ -25,7 +25,7 @@ from app.routers import users as users_router
 # DISCOVERY DOMAIN (Gyms, Analytics, Gallery)
 # -------------------------------------------------
 from app.routers import gyms, analytics
-from app.routers import discovery            # ✅ ADDED
+from app.routers import discovery
 from app.routers import gallery as gallery_router
 
 # -------------------------------------------------
@@ -57,6 +57,11 @@ from app.routers import ai_adaptation
 from app.ai.routers import central_summary
 
 # -------------------------------------------------
+# ✅ DIET AI ROUTER (NEW)
+# -------------------------------------------------
+from app.routes import diet   # 👈 THIS IS NEW
+
+# -------------------------------------------------
 # Onboarding / Reminder Intelligence
 # -------------------------------------------------
 from app.routers import onboarding
@@ -73,7 +78,7 @@ app = FastAPI(
 )
 
 # -------------------------------------------------
-# Static Files (images, videos, media)
+# Static Files
 # -------------------------------------------------
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -88,7 +93,7 @@ app.include_router(users_router.router)
 
 # ---- DISCOVERY ----
 app.include_router(gyms.router)
-app.include_router(discovery.router)          # ✅ ADDED
+app.include_router(discovery.router)
 app.include_router(analytics.router)
 app.include_router(gallery_router.router)
 
@@ -113,6 +118,9 @@ app.include_router(ai_image_router)
 app.include_router(ai_central.router)
 app.include_router(ai_adaptation.router)
 app.include_router(central_summary.router)
+
+# ---- ✅ DIET AI (NEW, ISOLATED) ----
+app.include_router(diet.router)
 
 # ---- ONBOARDING / REMINDER INTELLIGENCE ----
 app.include_router(onboarding.router)

@@ -1,108 +1,119 @@
 from typing import List, Dict, Set
 
+# RAG IS EVIDENCE ONLY — NEVER ACTION
 SAFE_TOPICS: Set[str] = {
     "nutrition",
     "workouts",
     "recovery",
     "exercise safety",
-    "fitness"
+    "fitness",
+    "sleep",
 }
 
 
 def build_answer(query: str, chunks: List[Dict]) -> Dict:
+    """
+    RAG ANSWER BUILDER (STRICT MODE)
+
+    HARD RULES:
+    - RAG MUST NEVER generate workout plans
+    - RAG MUST NEVER list exercises
+    - RAG MUST NEVER prescribe routines
+    - RAG PROVIDES EVIDENCE + PRINCIPLES ONLY
+    """
+
     query_l = query.lower()
 
-    # ----------------------------
+    # -------------------------------------------------
     # NO EVIDENCE
-    # ----------------------------
+    # -------------------------------------------------
     if not chunks:
         return {
-            "type": "general",
+            "type": "evidence",
             "summary": "I don’t have strong enough evidence to answer that confidently yet.",
             "data": {},
             "_confidence": 0.0,
             "_has_evidence": False,
-            "sources": []
+            "sources": [],
         }
 
-    # ----------------------------
-    # SOURCES
-    # ----------------------------
-    sources = [
-        {"source": c["source"], "url": c["url"]}
-        for c in chunks
-        if c.get("source") and c.get("url")
-    ]
+    # -------------------------------------------------
+    # SOURCES (DEDUPED)
+    # -------------------------------------------------
+    sources = []
+    seen = set()
 
-    # ----------------------------
-    # DETECT REQUESTED MUSCLES
-    # ----------------------------
-    muscle_map = {
-        "chest": "chest",
-        "triceps": "triceps",
-        "biceps": "biceps",
-        "back": "back",
-        "shoulder": "shoulders",
-        "shoulders": "shoulders",
-        "legs": "legs",
-        "quads": "legs",
-        "hamstrings": "legs",
-    }
+    for c in chunks:
+        src = c.get("source")
+        url = c.get("url")
+        if src and url and (src, url) not in seen:
+            sources.append({"source": src, "url": url})
+            seen.add((src, url))
 
-    requested_muscles = {
-        v for k, v in muscle_map.items() if k in query_l
-    }
-
-    # ----------------------------
-    # WORKOUT PATH
-    # ----------------------------
+    # -------------------------------------------------
+    # WORKOUT / TRAINING QUESTIONS → EVIDENCE ONLY
+    # -------------------------------------------------
     if any(k in query_l for k in ("workout", "exercise", "train", "hypertrophy")):
-        record = chunks[0]
-        exercises = record.get("exercises", [])
-
-        # 🔒 FILTER EXERCISES BY REQUESTED MUSCLE
-        if requested_muscles:
-            filtered_exercises = []
-            for ex in exercises:
-                name = ex.get("name", "").lower()
-
-                # simple, deterministic name-based filtering
-                if "tricep" in name and "triceps" not in requested_muscles:
-                    continue
-                if "bicep" in name and "biceps" not in requested_muscles:
-                    continue
-
-                filtered_exercises.append(ex)
-        else:
-            filtered_exercises = exercises
-
         return {
-            "type": "workout_plan",
-            "summary": f"{record.get('primary_muscle_group', '').title()} focused hypertrophy session.",
+            "type": "evidence",
+            "summary": "Here’s what evidence-based training principles suggest.",
             "data": {
-                "goal": record.get("goal"),
-                "primary_muscle_group": record.get("primary_muscle_group"),
-                "experience_level": record.get("experience_level"),
-                "exercises": filtered_exercises,
+                "principles": [
+                    {
+                        "claim": c.get("claim"),
+                        "evidence": c.get("evidence"),
+                        "source": c.get("source"),
+                    }
+                    for c in chunks
+                    if c.get("claim")
+                ]
+            },
+            "_confidence": 0.85,
+            "_has_evidence": True,
+            "sources": sources,
+        }
+
+    # -------------------------------------------------
+    # NUTRITION QUESTIONS → EVIDENCE ONLY
+    # -------------------------------------------------
+    if any(k in query_l for k in ("protein", "calories", "nutrition", "diet", "macro")):
+        return {
+            "type": "evidence",
+            "summary": "Here’s what current nutrition research suggests.",
+            "data": {
+                "principles": [
+                    {
+                        "claim": c.get("claim"),
+                        "evidence": c.get("evidence"),
+                        "source": c.get("source"),
+                    }
+                    for c in chunks
+                    if c.get("claim")
+                ]
             },
             "_confidence": 0.9,
             "_has_evidence": True,
             "sources": sources,
-            "presentation": {
-                "tone": "coach",
-                "format": "table",
-                "cta": "Save workout to Library"
-            }
         }
 
-    # ----------------------------
-    # FALLBACK
-    # ----------------------------
+    # -------------------------------------------------
+    # SAFE GENERAL FALLBACK
+    # -------------------------------------------------
     return {
-        "type": "general",
+        "type": "evidence",
         "summary": "Here’s what current evidence suggests.",
-        "data": {},
-        "_confidence": 0.0,
-        "_has_evidence": False,
-        "sources": sources
+        "data": {
+            "principles": [
+                {
+                    "claim": c.get("claim"),
+                    "evidence": c.get("evidence"),
+                    "source": c.get("source"),
+                }
+                for c in chunks
+                if c.get("claim")
+            ]
+        },
+        "_confidence": 0.7,
+        "_has_evidence": True,
+        "sources": sources,
     }
