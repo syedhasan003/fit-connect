@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { dietStore } from "./dietStore";
-import DietBottomNav from "./components/DietBottomNav";
 import "./diet.css";
 
 export default function DietLog() {
@@ -34,21 +33,9 @@ export default function DietLog() {
 
         <div className="log-card">
           <div className="log-inputs">
-            <input
-              placeholder="Food name"
-              value={food}
-              onChange={e => setFood(e.target.value)}
-            />
-            <input
-              placeholder="Calories"
-              value={calories}
-              onChange={e => setCalories(e.target.value)}
-            />
-            <input
-              placeholder="Meal / context (e.g. Post-workout)"
-              value={meal}
-              onChange={e => setMeal(e.target.value)}
-            />
+            <input placeholder="Food name" value={food} onChange={e => setFood(e.target.value)} />
+            <input placeholder="Calories" value={calories} onChange={e => setCalories(e.target.value)} />
+            <input placeholder="Meal / context" value={meal} onChange={e => setMeal(e.target.value)} />
           </div>
 
           <button className="primary wide" onClick={save}>
@@ -57,7 +44,6 @@ export default function DietLog() {
         </div>
 
         <div className="bottom-spacer" />
-        <DietBottomNav />
       </div>
     </main>
   );

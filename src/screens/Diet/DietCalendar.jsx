@@ -1,4 +1,3 @@
-import DietBottomNav from "./components/DietBottomNav";
 import "./diet.css";
 
 export default function DietCalendar() {
@@ -11,22 +10,18 @@ export default function DietCalendar() {
         <h1 className="diet-title">Diet calendar</h1>
 
         <div className="calendar-grid">
-          {days.map(day => {
-            const logged = day <= loggedUntil;
-            return (
-              <div
-                key={day}
-                className={`calendar-day ${logged ? "logged" : ""}`}
-              >
-                <span className="day-num">{day}</span>
-                {logged && <span className="day-status">Logged</span>}
-              </div>
-            );
-          })}
+          {days.map(day => (
+            <div
+              key={day}
+              className={`calendar-day ${day <= loggedUntil ? "logged" : ""}`}
+            >
+              <span className="day-num">{day}</span>
+              {day <= loggedUntil && <span className="day-status">Logged</span>}
+            </div>
+          ))}
         </div>
 
         <div className="bottom-spacer" />
-        <DietBottomNav />
       </div>
     </main>
   );
