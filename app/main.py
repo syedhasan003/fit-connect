@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 # -------------------------------------------------
 # Database
@@ -57,9 +58,9 @@ from app.routers import ai_adaptation
 from app.ai.routers import central_summary
 
 # -------------------------------------------------
-# ✅ DIET AI ROUTER (NEW)
+# DIET AI ROUTER
 # -------------------------------------------------
-from app.routes import diet   # 👈 THIS IS NEW
+from app.routes import diet
 
 # -------------------------------------------------
 # Onboarding / Reminder Intelligence
@@ -75,6 +76,19 @@ from app.routers import reminder_behavior
 app = FastAPI(
     title="FitConnect API",
     version="1.0.0",
+)
+
+# -------------------------------------------------
+# ✅ CORS (CRITICAL FIX)
+# -------------------------------------------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",  # frontend dev
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],        # allows OPTIONS, POST, etc.
+    allow_headers=["*"],
 )
 
 # -------------------------------------------------
@@ -119,7 +133,7 @@ app.include_router(ai_central.router)
 app.include_router(ai_adaptation.router)
 app.include_router(central_summary.router)
 
-# ---- ✅ DIET AI (NEW, ISOLATED) ----
+# ---- DIET AI ----
 app.include_router(diet.router)
 
 # ---- ONBOARDING / REMINDER INTELLIGENCE ----
