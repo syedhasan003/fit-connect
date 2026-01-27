@@ -1,6 +1,6 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
-import { AuthProvider } from "./auth/AuthContext";
+import { AuthProvider, useAuth } from "./auth/AuthContext";
 import ProtectedRoute from "./auth/ProtectedRoute";
 
 import AuthLayout from "./components/layout/AuthLayout";
@@ -15,68 +15,109 @@ import Diet from "./screens/Diet";
 import Login from "./screens/Login";
 import Register from "./screens/Register";
 
+function AppRoutes() {
+  const { isAuthenticated, initialized } = useAuth();
+
+  if (!initialized) return null;
+
+  return (
+    <Routes>
+      {/* AUTH */}
+      <Route
+        path="/login"
+        element={
+          isAuthenticated ? <Navigate to="/home" /> : (
+            <AuthLayout>
+              <Login />
+            </AuthLayout>
+          )
+        }
+      />
+      <Route
+        path="/register"
+        element={
+          isAuthenticated ? <Navigate to="/home" /> : (
+            <AuthLayout>
+              <Register />
+            </AuthLayout>
+          )
+        }
+      />
+
+      {/* PROTECTED */}
+      <Route
+        path="/home"
+        element={
+          <ProtectedRoute>
+            <Home />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/discover"
+        element={
+          <ProtectedRoute>
+            <Discovery />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/central"
+        element={
+          <ProtectedRoute>
+            <Central />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/vault"
+        element={
+          <ProtectedRoute>
+            <Vault />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <Profile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/workout-builder"
+        element={
+          <ProtectedRoute>
+            <WorkoutBuilder />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/diet/*"
+        element={
+          <ProtectedRoute>
+            <Diet />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* DEFAULT */}
+      <Route
+        path="/"
+        element={
+          <Navigate to={isAuthenticated ? "/home" : "/login"} />
+        }
+      />
+    </Routes>
+  );
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Routes>
-          {/* Public */}
-          <Route path="/" element={<Home />} />
-          <Route path="/discover" element={<Discovery />} />
-          <Route path="/central" element={<Central />} />
-
-          {/* Auth */}
-          <Route
-            path="/login"
-            element={
-              <AuthLayout>
-                <Login />
-              </AuthLayout>
-            }
-          />
-          <Route
-            path="/register"
-            element={
-              <AuthLayout>
-                <Register />
-              </AuthLayout>
-            }
-          />
-
-          {/* Protected */}
-          <Route
-            path="/vault"
-            element={
-              <ProtectedRoute>
-                <Vault />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/profile"
-            element={
-              <ProtectedRoute>
-                <Profile />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/workout-builder"
-            element={
-              <ProtectedRoute>
-                <WorkoutBuilder />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/diet/*"
-            element={
-              <ProtectedRoute>
-                <Diet />
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
+        <AppRoutes />
       </BrowserRouter>
     </AuthProvider>
   );

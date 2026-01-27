@@ -4,7 +4,7 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
@@ -22,23 +22,33 @@ export function AuthProvider({ children }) {
       }
     }
 
-    setLoading(false);
+    setInitialized(true);
   }, []);
 
   const login = (token) => {
     localStorage.setItem("access_token", token);
     const payload = JSON.parse(atob(token.split(".")[1]));
-    setUser({ id: payload.sub, role: payload.role });
+    setUser({
+      id: payload.sub,
+      role: payload.role,
+    });
   };
 
   const logout = () => {
     localStorage.removeItem("access_token");
     setUser(null);
-    window.location.href = "/login";
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated: !!user,
+        initialized,
+        login,
+        logout,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

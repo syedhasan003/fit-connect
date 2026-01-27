@@ -1,0 +1,10 @@
+.central-page {
+  padding: 20px;
+  padding-bottom: 90px;
+  background: #000;
+  min-height: 100vh;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}

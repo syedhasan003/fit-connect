@@ -1,39 +1,62 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "../../components/navigation/BottomNav";
+import { fetchHomeOverview } from "../../api/home";
 import "./home.css";
 
 export default function Home() {
   const navigate = useNavigate();
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    fetchHomeOverview().then(setData).catch(console.error);
+  }, []);
+
+  if (!data) return null;
+
+  const name =
+    data.user.full_name ||
+    data.user.email.split("@")[0];
 
   return (
     <>
-      <main className="home">
+      <main className="home scrollable">
         <header className="home-header">
           <div className="avatar" />
           <div>
-            <h1>Lewis Tarun</h1>
+            <h1>{name}</h1>
             <p className="muted">Dashboard overview</p>
           </div>
         </header>
 
+        {/* TODAY */}
         <section>
           <h2>Today</h2>
           <div className="card">
             <div className="row">
               <span>Workout</span>
-              <span className="status">Pending</span>
+              <span className="status">
+                {data.today.workout === "completed"
+                  ? "Completed"
+                  : "Pending"}
+              </span>
             </div>
+
             <div className="row">
               <span>Diet</span>
-              <span className="muted">1420 / 2400 kcal</span>
+              <span className="muted">Coming soon</span>
             </div>
+
             <div className="row">
-              <span>Reminder</span>
-              <span className="muted">1 missed</span>
+              <span>Reminders</span>
+              <span className="muted">
+                {data.today.reminders.missed} missed
+              </span>
             </div>
           </div>
         </section>
 
+        {/* CREATE */}
         <section>
           <h2>Create</h2>
           <div className="grid">
@@ -43,28 +66,51 @@ export default function Home() {
             >
               <small>CREATE</small>
               <h3>Workout</h3>
-              <p className="link">Open Central →</p>
+              <p className="link">Manual builder →</p>
             </div>
 
             <div
               className="card clickable"
-              onClick={() => navigate("/diet")}
+              onClick={() =>
+                navigate("/central", {
+                  state: {
+                    preset: "Create a workout plan for me"
+                  }
+                })
+              }
             >
               <small>CREATE</small>
               <h3>Diet Plan</h3>
-              <p className="link">Open Diet →</p>
+              <p className="link">Use AI →</p>
             </div>
           </div>
         </section>
 
+        {/* PROGRESS */}
         <section>
-          <h2>AI Insights</h2>
-          <div className="card muted">
-            Your calorie intake is consistent this week
+          <h2>Progress</h2>
+          <div className="card center">
+            <div className="consistency">
+              {data.consistency.map((d) => (
+                <span
+                  key={d.date}
+                  className={d.worked_out ? "dot active" : "dot"}
+                />
+              ))}
+            </div>
+            <p className="muted">Consistency (last 14 days)</p>
           </div>
         </section>
 
-        <div style={{ height: "90px" }} />
+        {/* AI INSIGHT */}
+        <section>
+          <h2>AI Insight</h2>
+          <div className="card muted">
+            Your consistency is improving. Keep momentum going.
+          </div>
+        </section>
+
+        <div className="bottom-spacer" />
       </main>
 
       <BottomNav />
