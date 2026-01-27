@@ -9,6 +9,22 @@ from app.models.gym import Gym
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
+
+# ---------------------------------------------------
+# GET CURRENT USER (FOUNDATIONAL)
+# ---------------------------------------------------
+@router.get("/me")
+def get_me(
+    current_user: User = Depends(get_current_user),
+):
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "name": current_user.name if hasattr(current_user, "name") else None,
+        "role": current_user.role,
+    }
+
+
 # ---------------------------------------------------
 # SELECT GYM (user)
 # ---------------------------------------------------
