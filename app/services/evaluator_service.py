@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
 
 from app.models.evaluator_state import EvaluatorState
 from app.models.workout_log import WorkoutLog
@@ -7,21 +7,18 @@ from app.models.reminder import Reminder
 from app.models.reminder_log import ReminderLog
 from app.models.health_memory import HealthMemory
 
-from app.services.daily_snapshot_service import DailySnapshotService
-
 
 class EvaluatorService:
     """
     Central intelligence evaluator.
-    Computes the user's CURRENT state
-    AND writes the daily health snapshot.
+    Computes the user's CURRENT state.
     """
 
     def evaluate_user(self, db: Session, user_id: int) -> EvaluatorState:
         now = datetime.utcnow()
 
         # -------------------------------
-        # Workouts (last 7 days)
+        # Workouts
         # -------------------------------
         recent_workouts = (
             db.query(WorkoutLog)
@@ -33,9 +30,9 @@ class EvaluatorService:
         )
 
         # -------------------------------
-        # Missed reminders
+        # Reminders
         # -------------------------------
-        missed_reminders = (
+        total_missed = (
             db.query(ReminderLog)
             .filter(
                 ReminderLog.user_id == user_id,
@@ -54,18 +51,18 @@ class EvaluatorService:
         )
 
         # -------------------------------
-        # Pending tasks
+        # Pending Tasks
         # -------------------------------
         pending_tasks = {
             "workout": recent_workouts == 0,
-            "diet": False,  # future
-            "reminders": active_reminders > 0,
+            "diet": False,  # will be wired later
+            "reminders": active_reminders,
         }
 
         # -------------------------------
-        # Focus logic
+        # Focus Logic (simple but solid)
         # -------------------------------
-        if missed_reminders > 0:
+        if total_missed > 0:
             focus = "discipline"
         elif recent_workouts == 0:
             focus = "workout"
@@ -73,22 +70,22 @@ class EvaluatorService:
             focus = "maintenance"
 
         # -------------------------------
-        # Consistency score
+        # Consistency Score
         # -------------------------------
         consistency_score = min(100, recent_workouts * 15)
 
         # -------------------------------
-        # AI-safe summary (Home-ready)
+        # AI Summary (Home-safe)
         # -------------------------------
         if focus == "discipline":
-            ai_summary = "You’ve missed reminders recently. Let’s reset gently."
+            ai_summary = "You’ve missed reminders recently. Let’s refocus gently."
         elif focus == "workout":
-            ai_summary = "No workouts logged this week. A light session could help."
+            ai_summary = "You haven’t trained in a few days. A light session could help."
         else:
-            ai_summary = "You’re staying consistent. Keep it going."
+            ai_summary = "You’re maintaining consistency. Keep going."
 
         # -------------------------------
-        # Upsert evaluator state
+        # Upsert EvaluatorState
         # -------------------------------
         state = (
             db.query(EvaluatorState)
@@ -101,7 +98,7 @@ class EvaluatorService:
                 user_id=user_id,
                 focus=focus,
                 consistency_score=consistency_score,
-                missed_reminders=missed_reminders,
+                missed_reminders=total_missed,
                 pending_tasks=pending_tasks,
                 ai_summary=ai_summary,
             )
@@ -109,33 +106,21 @@ class EvaluatorService:
         else:
             state.focus = focus
             state.consistency_score = consistency_score
-            state.missed_reminders = missed_reminders
+            state.missed_reminders = total_missed
             state.pending_tasks = pending_tasks
             state.ai_summary = ai_summary
 
         # -------------------------------
-        # 🔥 DAILY HEALTH SNAPSHOT (NEW)
-        # -------------------------------
-        snapshot_service = DailySnapshotService()
-        snapshot_service.build_snapshot(
-            db=db,
-            user_id=user_id,
-            target_date=date.today(),
-        )
-
-        # -------------------------------
-        # Mirror evaluator result to HealthMemory (read-only)
+        # Mirror into HealthMemory (for AI / Vault)
         # -------------------------------
         memory = HealthMemory(
             user_id=user_id,
             category="evaluator_snapshot",
-            source="system",
-            content={
-                "focus": focus,
-                "consistency_score": consistency_score,
-                "missed_reminders": missed_reminders,
-                "pending_tasks": pending_tasks,
-            },
+            content=(
+                f"Focus: {focus}. "
+                f"Consistency score: {consistency_score}. "
+                f"Missed reminders: {total_missed}."
+            ),
         )
 
         db.add(memory)

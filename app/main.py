@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.db.database import init_db
 
 # -------------------------------------------------
-# Model imports
+# Model imports (ENSURE TABLES EXIST)
 # -------------------------------------------------
 import app.models.user
 import app.models.gym
@@ -18,6 +18,10 @@ import app.models.workout_log
 import app.models.weight_log
 import app.models.reminder
 import app.models.reminder_log
+import app.models.evaluator_state
+import app.models.health_memory
+import app.models.daily_health_snapshot
+import app.models.vault_item
 
 # -------------------------------------------------
 # Core Routers
@@ -45,12 +49,15 @@ from app.routers import reminders
 from app.routers import home as home_router
 
 # -------------------------------------------------
-# Internal / System
+# Vault
+# -------------------------------------------------
+from app.routers import vault
+
+# -------------------------------------------------
+# Internal / System (Evaluator)
 # -------------------------------------------------
 from app.routes import internal
-from app.routers import internal_reminder_eval
-from app.routers.library import router as library_router
-from app.routers import library
+from app.routes import internal_evaluator
 
 # -------------------------------------------------
 # AI Routers (non-orchestrator)
@@ -79,14 +86,17 @@ from app.routers import reminder_reasoning
 from app.routers import reminder_behavior
 
 # -------------------------------------------------
-# Orchestrator app
+# Orchestrator App (ISOLATED)
 # -------------------------------------------------
 from app.ai.orchestrator.orchestrator import app as orchestrator_app
 
 # -------------------------------------------------
 # App Init
 # -------------------------------------------------
-app = FastAPI(title="FitConnect API", version="1.0.0")
+app = FastAPI(
+    title="FitConnect API",
+    version="1.0.0",
+)
 
 # -------------------------------------------------
 # CORS
@@ -100,34 +110,42 @@ app.add_middleware(
 )
 
 # -------------------------------------------------
-# Static
+# Static Files
 # -------------------------------------------------
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # -------------------------------------------------
-# Routers
+# ROUTERS
 # -------------------------------------------------
+
+# Core
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(users_router.router)
 
+# Discovery
 app.include_router(gyms.router)
 app.include_router(discovery.router)
 app.include_router(analytics.router)
 app.include_router(gallery_router.router)
 
+# User Data
 app.include_router(progress_router.router)
 app.include_router(health_profile_router.router)
 app.include_router(health_memory.router)
 app.include_router(reminders.router)
 
+# Home
 app.include_router(home_router.router)
 
-app.include_router(internal.router)
-app.include_router(internal_reminder_eval.router)
-app.include_router(library_router)
-app.include_router(library.router)
+# Vault
+app.include_router(vault.router)
 
+# Internal
+app.include_router(internal.router)
+app.include_router(internal_evaluator.router)
+
+# AI
 app.include_router(ai_chat_router)
 app.include_router(ai_plan_router)
 app.include_router(ai_progress_router)
@@ -138,15 +156,17 @@ app.include_router(ai_central.router)
 app.include_router(ai_adaptation.router)
 app.include_router(central_summary.router)
 
+# Diet
 app.include_router(diet.router)
 
+# Onboarding
 app.include_router(onboarding.router)
 app.include_router(onboarding_health.router)
 app.include_router(reminder_reasoning.router)
 app.include_router(reminder_behavior.router)
 
 # -------------------------------------------------
-# 🔥 CORRECT ORCHESTRATOR MOUNT
+# ORCHESTRATOR
 # -------------------------------------------------
 app.mount("/orchestrate", orchestrator_app)
 
