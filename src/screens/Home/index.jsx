@@ -9,7 +9,9 @@ export default function Home() {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    fetchHomeOverview().then(setData).catch(console.error);
+    fetchHomeOverview()
+      .then(setData)
+      .catch(console.error);
   }, []);
 
   if (!data) return null;
@@ -20,7 +22,8 @@ export default function Home() {
 
   return (
     <>
-      <main className="home scrollable">
+      <main className="home">
+        {/* HEADER */}
         <header className="home-header">
           <div className="avatar" />
           <div>
@@ -74,7 +77,7 @@ export default function Home() {
               onClick={() =>
                 navigate("/central", {
                   state: {
-                    preset: "Create a workout plan for me"
+                    preset: "Create a diet plan for me"
                   }
                 })
               }
@@ -94,7 +97,7 @@ export default function Home() {
               {data.consistency.map((d) => (
                 <span
                   key={d.date}
-                  className={d.worked_out ? "dot active" : "dot"}
+                  className={`dot ${d.worked_out ? "on" : ""}`}
                 />
               ))}
             </div>
@@ -106,11 +109,12 @@ export default function Home() {
         <section>
           <h2>AI Insight</h2>
           <div className="card muted">
-            Your consistency is improving. Keep momentum going.
+            {data.evaluator?.ai_summary ||
+              "Keep showing up. Momentum compounds."}
           </div>
         </section>
 
-        <div className="bottom-spacer" />
+        <div style={{ height: "90px" }} />
       </main>
 
       <BottomNav />

@@ -1,111 +1,176 @@
-/* ROOT */
-.home-root {
-  background: #000;
+/* ----------------------------------
+   ROOT HOME LAYOUT
+----------------------------------- */
+.home {
+  padding: 20px;
+  padding-bottom: 110px; /* space for bottom nav */
   min-height: 100vh;
-  padding: 20px 16px 120px;
-  color: #fff;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  overflow-y: auto;
 }
 
-/* SECTIONS */
-.section {
-  margin-bottom: 28px;
+/* Centered state (loading / error) */
+.home.center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
-.section-title {
+/* ----------------------------------
+   HEADER
+----------------------------------- */
+.home-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 26px;
+}
+
+.avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #2a2a2a, #1a1a1a);
+  border: 1px solid #2b2b2b;
+}
+
+h1 {
+  margin: 0;
   font-size: 18px;
   font-weight: 600;
-  margin-bottom: 12px;
 }
 
-/* CARDS */
+h2 {
+  margin: 26px 0 12px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+p {
+  margin: 0;
+}
+
+/* ----------------------------------
+   TEXT STYLES
+----------------------------------- */
+.muted {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.status {
+  color: #ffffff;
+  font-weight: 500;
+}
+
+/* ----------------------------------
+   CARDS
+----------------------------------- */
 .card {
+  background: linear-gradient(180deg, #141414, #0d0d0d);
   border-radius: 18px;
   padding: 16px;
+  border: 1px solid var(--border);
+  margin-bottom: 14px;
 }
 
-/* TODAY (WHITE) */
-.card-white {
-  background: #fff;
-  color: #000;
+.card.muted {
+  color: var(--muted);
 }
 
-/* GLASS */
-.card-glass {
-  background: rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.card-glass.small {
-  padding: 18px;
-}
-
-.card-glass.subtle {
-  opacity: 0.85;
-}
-
-.card-glass.center {
+.card.center {
   text-align: center;
-  padding: 28px;
 }
 
-/* ROWS */
+.card.clickable {
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.card.clickable:active {
+  transform: scale(0.98);
+  border-color: #2e2e2e;
+}
+
+/* ----------------------------------
+   ROWS (Today section)
+----------------------------------- */
 .row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 15px;
+  padding: 10px 0;
+  border-bottom: 1px solid #1f1f1f;
 }
 
-.divider {
-  height: 1px;
-  background: rgba(0, 0, 0, 0.08);
-  margin: 10px 0;
+.row:last-child {
+  border-bottom: none;
 }
 
-/* TEXT */
-.status {
-  font-size: 14px;
-  color: #555;
-}
-
-.status.muted {
-  color: #777;
-}
-
-.status.danger {
-  color: #999;
-}
-
-.meta {
-  font-size: 12px;
-  opacity: 0.6;
-  margin-bottom: 4px;
-}
-
-.link {
-  margin-top: 10px;
-  font-size: 14px;
-  opacity: 0.9;
-}
-
-/* BUTTON */
-.primary-button {
-  width: 100%;
-  margin-top: 14px;
-  padding: 14px 0;
-  border-radius: 14px;
-  background: #fff;
-  color: #000;
-  font-weight: 600;
-  border: none;
-}
-
-/* GRID */
+/* ----------------------------------
+   GRID (Create / Quick Actions)
+----------------------------------- */
 .grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
+}
+
+/* ----------------------------------
+   SMALL TEXT + LINKS
+----------------------------------- */
+small {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.link {
+  margin-top: 6px;
+  font-size: 14px;
+  color: #cfcfcf;
+}
+
+/* ----------------------------------
+   CONSISTENCY GRAPH
+----------------------------------- */
+.consistency {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #1f1f1f;
+}
+
+.dot.on {
+  background: #ffffff;
+}
+
+/* ----------------------------------
+   BUTTON (if needed later)
+----------------------------------- */
+.primary {
+  width: 100%;
+  padding: 14px;
+  margin-top: 14px;
+  border-radius: 14px;
+  border: none;
+  background: #ffffff;
+  color: #000000;
+  font-weight: 600;
+}
+
+/* ----------------------------------
+   SAFETY: MOBILE SCROLL FEEL
+----------------------------------- */
+* {
+  -webkit-tap-highlight-color: transparent;
 }
