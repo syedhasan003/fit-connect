@@ -7,10 +7,30 @@ from app.deps import get_current_user
 from app.models.user import User
 from app.schemas.vault import VaultCreate, VaultResponse
 from app.services.vault_service import VaultService
+from app.services.health_timeline_service import HealthTimelineService
 
 router = APIRouter(prefix="/vault", tags=["Vault"])
 
 vault_service = VaultService()
+health_timeline_service = HealthTimelineService()
+
+# -------------------------------------------------
+# 🔒 READ-ONLY HEALTH TIMELINE (SPECIAL ROUTE)
+# MUST COME BEFORE /{item_id}
+# -------------------------------------------------
+@router.get("/health-timeline")
+def get_health_timeline(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Read-only health timeline.
+    Aggregates daily snapshots + health memory.
+    """
+    return health_timeline_service.get_timeline(
+        db=db,
+        user_id=current_user.id,
+    )
 
 
 # -------------------------------------------------
@@ -56,7 +76,7 @@ def list_vault_items(
 
 
 # -------------------------------------------------
-# GET SINGLE VAULT ITEM
+# GET SINGLE VAULT ITEM (⚠️ GENERIC — MUST BE LAST)
 # -------------------------------------------------
 @router.get("/{item_id}", response_model=VaultResponse)
 def get_vault_item(

@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from sqlalchemy.orm import Session
 
 from app.models.daily_health_snapshot import DailyHealthSnapshot
@@ -8,13 +8,9 @@ from app.models.reminder_log import ReminderLog
 from app.models.health_memory import HealthMemory
 
 
-FINALIZE_AFTER_DAYS = 3
-
-
 class DailySnapshotService:
     """
     Builds an immutable, read-only snapshot of a user's health for a given day.
-    Central is allowed to update it ONLY within correction window.
     """
 
     def build_snapshot(
@@ -27,25 +23,9 @@ class DailySnapshotService:
         day_start = datetime.combine(target_date, datetime.min.time())
         day_end = datetime.combine(target_date, datetime.max.time())
 
-        # --------------------------------
-        # UPSERT TARGET
-        # --------------------------------
-        snapshot = (
-            db.query(DailyHealthSnapshot)
-            .filter(
-                DailyHealthSnapshot.user_id == user_id,
-                DailyHealthSnapshot.snapshot_date == target_date,
-            )
-            .first()
-        )
-
-        # ⛔ Frozen snapshot cannot be rebuilt
-        if snapshot and snapshot.is_final:
-            return snapshot
-
-        # --------------------------------
+        # -------------------------------
         # WORKOUTS
-        # --------------------------------
+        # -------------------------------
         workouts = (
             db.query(WorkoutLog)
             .filter(
@@ -58,9 +38,9 @@ class DailySnapshotService:
 
         workout_done = len(workouts) > 0
 
-        # --------------------------------
+        # -------------------------------
         # REMINDERS
-        # --------------------------------
+        # -------------------------------
         reminders_total = (
             db.query(Reminder)
             .filter(
@@ -82,22 +62,22 @@ class DailySnapshotService:
             .count()
         )
 
-        # --------------------------------
-        # HEALTH MEMORY EVENTS (FACTS)
-        # --------------------------------
-        memory_events = (
+        # -------------------------------
+        # BEHAVIOUR / MEMORY SIGNALS
+        # -------------------------------
+        behaviour_events = (
             db.query(HealthMemory)
             .filter(
                 HealthMemory.user_id == user_id,
                 HealthMemory.created_at >= day_start,
                 HealthMemory.created_at <= day_end,
             )
-            .all()
+            .count()
         )
 
-        # --------------------------------
-        # AI INSIGHT (deterministic, safe)
-        # --------------------------------
+        # -------------------------------
+        # AI INSIGHT (deterministic)
+        # -------------------------------
         if reminders_missed > 0 and not workout_done:
             ai_insight = "Low adherence today. Missed reminders and no workout logged."
         elif workout_done:
@@ -105,9 +85,6 @@ class DailySnapshotService:
         else:
             ai_insight = "No major activity logged today."
 
-        # --------------------------------
-        # SNAPSHOT STRUCTURE (CANONICAL)
-        # --------------------------------
         snapshot_data = {
             "date": target_date.isoformat(),
             "workout": {
@@ -115,40 +92,37 @@ class DailySnapshotService:
                 "count": len(workouts),
             },
             "diet": {
-                "followed": None,  # reserved
+                "followed": None,
             },
             "reminders": {
                 "scheduled": reminders_total,
                 "missed": reminders_missed,
             },
-            "health_events": [
-                {
-                    "category": m.category,
-                    "content": m.content,
-                }
-                for m in memory_events
-            ],
+            "behaviour_events": behaviour_events,
             "ai_insight": ai_insight,
         }
 
-        # --------------------------------
-        # CREATE OR UPDATE SNAPSHOT
-        # --------------------------------
+        # -------------------------------
+        # UPSERT (IMMUTABLE LOGIC OK FOR NOW)
+        # -------------------------------
+        snapshot = (
+            db.query(DailyHealthSnapshot)
+            .filter(
+                DailyHealthSnapshot.user_id == user_id,
+                DailyHealthSnapshot.date == target_date,   # ✅ FIXED
+            )
+            .first()
+        )
+
         if not snapshot:
             snapshot = DailyHealthSnapshot(
                 user_id=user_id,
-                snapshot_date=target_date,
+                date=target_date,
                 data=snapshot_data,
             )
             db.add(snapshot)
         else:
             snapshot.data = snapshot_data
-
-        # --------------------------------
-        # FINALIZE AFTER WINDOW
-        # --------------------------------
-        if target_date < date.today() - timedelta(days=FINALIZE_AFTER_DAYS):
-            snapshot.is_final = 1
 
         db.commit()
         db.refresh(snapshot)
