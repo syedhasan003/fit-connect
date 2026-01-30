@@ -31,7 +31,6 @@ def get_db():
 
 # Gyms
 from app.models.gym import Gym
-from app.models.gym_amenities import GymAmenities
 from app.models.gym_equipment import GymEquipment
 from app.models.gym_pricing import GymPricing
 from app.models.gym_trainer import GymTrainer

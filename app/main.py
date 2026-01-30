@@ -12,6 +12,7 @@ from app.db.database import init_db
 # -------------------------------------------------
 import app.models.user
 import app.models.gym
+import app.models.gym_amenities  # ✅ NEW - Added for amenities table
 import app.models.visit
 import app.models.gallery
 import app.models.workout_log
