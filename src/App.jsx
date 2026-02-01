@@ -5,6 +5,7 @@ import ProtectedRoute from "./auth/ProtectedRoute";
 
 import AuthLayout from "./components/layout/AuthLayout";
 
+// Screens
 import Home from "./screens/Home";
 import Discovery from "./screens/Discovery";
 import Central from "./screens/Central";
@@ -18,25 +19,31 @@ import Register from "./screens/Register";
 function AppRoutes() {
   const { isAuthenticated, initialized } = useAuth();
 
+  // Prevent flashing before auth state loads
   if (!initialized) return null;
 
   return (
     <Routes>
-      {/* AUTH */}
+      {/* ---------------- AUTH ---------------- */}
       <Route
         path="/login"
         element={
-          isAuthenticated ? <Navigate to="/home" /> : (
+          isAuthenticated ? (
+            <Navigate to="/home" />
+          ) : (
             <AuthLayout>
               <Login />
             </AuthLayout>
           )
         }
       />
+
       <Route
         path="/register"
         element={
-          isAuthenticated ? <Navigate to="/home" /> : (
+          isAuthenticated ? (
+            <Navigate to="/home" />
+          ) : (
             <AuthLayout>
               <Register />
             </AuthLayout>
@@ -44,7 +51,7 @@ function AppRoutes() {
         }
       />
 
-      {/* PROTECTED */}
+      {/* ---------------- PROTECTED ---------------- */}
       <Route
         path="/home"
         element={
@@ -53,6 +60,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/discover"
         element={
@@ -61,6 +69,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/central"
         element={
@@ -69,6 +78,8 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
+      {/* ✅ VAULT ROUTE */}
       <Route
         path="/vault"
         element={
@@ -77,14 +88,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/profile"
-        element={
-          <ProtectedRoute>
-            <Profile />
-          </ProtectedRoute>
-        }
-      />
+
       <Route
         path="/workout-builder"
         element={
@@ -93,6 +97,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/diet/*"
         element={
@@ -102,7 +107,16 @@ function AppRoutes() {
         }
       />
 
-      {/* DEFAULT */}
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <Profile />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* ---------------- DEFAULT ---------------- */}
       <Route
         path="/"
         element={
