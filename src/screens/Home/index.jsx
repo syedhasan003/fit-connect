@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "../../components/navigation/BottomNav";
 import { fetchHomeOverview } from "../../api/home";
-import "./home.css";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -14,110 +13,540 @@ export default function Home() {
       .catch(console.error);
   }, []);
 
-  if (!data) return null;
+  if (!data) return <LoadingState />;
 
-  const name =
-    data.user.full_name ||
-    data.user.email.split("@")[0];
+  const name = data.user.full_name || data.user.email.split("@")[0];
 
   return (
-    <>
-      <main className="home">
-        {/* HEADER */}
-        <header className="home-header">
-          <div className="avatar" />
-          <div>
-            <h1>{name}</h1>
-            <p className="muted">Dashboard overview</p>
-          </div>
-        </header>
+    <div style={{
+      minHeight: "100vh",
+      background: "#000",
+      color: "#fff",
+      paddingBottom: "100px",
+    }}>
+      {/* HEADER */}
+      <header style={{
+        padding: "24px 20px 20px",
+        display: "flex",
+        alignItems: "center",
+        gap: "16px",
+      }}>
+        <div style={{
+          width: 52,
+          height: 52,
+          borderRadius: "50%",
+          background: "linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(99, 102, 241, 0.3))",
+          border: "2px solid rgba(139, 92, 246, 0.4)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 20,
+          fontWeight: 600,
+          boxShadow: "0 8px 24px rgba(139, 92, 246, 0.2)",
+          position: "relative",
+        }}>
+          {/* Animated ring */}
+          <div style={{
+            position: "absolute",
+            inset: -4,
+            borderRadius: "50%",
+            background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
+            opacity: 0.3,
+            filter: "blur(8px)",
+            animation: "pulse 3s ease-in-out infinite",
+          }} />
+          <span style={{ position: "relative", zIndex: 1 }}>
+            {name.charAt(0).toUpperCase()}
+          </span>
+        </div>
+        <div>
+          <h1 style={{
+            margin: 0,
+            fontSize: 20,
+            fontWeight: 600,
+            letterSpacing: 0.3,
+          }}>
+            {name}
+          </h1>
+          <p style={{
+            margin: "2px 0 0",
+            fontSize: 14,
+            color: "rgba(255,255,255,0.5)",
+            fontWeight: 450,
+          }}>
+            Dashboard overview
+          </p>
+        </div>
+      </header>
 
-        {/* TODAY */}
-        <section>
-          <h2>Today</h2>
-          <div className="card">
-            <div className="row">
-              <span>Workout</span>
-              <span className="status">
-                {data.today.workout === "completed"
-                  ? "Completed"
-                  : "Pending"}
-              </span>
-            </div>
+      <div style={{ padding: "0 20px" }}>
+        {/* TODAY SECTION */}
+        <SectionHeader title="Today" />
+        <TodayCard data={data.today} />
 
-            <div className="row">
-              <span>Diet</span>
-              <span className="muted">Coming soon</span>
-            </div>
+        {/* CREATE SECTION */}
+        <SectionHeader title="Create" />
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 14,
+          marginBottom: 32,
+        }}>
+          <CreateCard
+            icon="🏋️"
+            label="CREATE"
+            title="Workout"
+            link="Manual builder →"
+            color="#8b5cf6"
+            onClick={() => navigate("/workout-builder")}
+          />
+          <CreateCard
+            icon="🍽️"
+            label="CREATE"
+            title="Diet Plan"
+            link="Use AI →"
+            color="#6366f1"
+            onClick={() => navigate("/central", {
+              state: { preset: "Create a diet plan for me" }
+            })}
+          />
+        </div>
 
-            <div className="row">
-              <span>Reminders</span>
-              <span className="muted">
-                {data.today.reminders.missed} missed
-              </span>
-            </div>
-          </div>
-        </section>
+        {/* PROGRESS SECTION */}
+        <SectionHeader title="Progress" />
+        <ProgressCard consistency={data.consistency} />
 
-        {/* CREATE */}
-        <section>
-          <h2>Create</h2>
-          <div className="grid">
-            <div
-              className="card clickable"
-              onClick={() => navigate("/workout-builder")}
-            >
-              <small>CREATE</small>
-              <h3>Workout</h3>
-              <p className="link">Manual builder →</p>
-            </div>
-
-            <div
-              className="card clickable"
-              onClick={() =>
-                navigate("/central", {
-                  state: {
-                    preset: "Create a diet plan for me"
-                  }
-                })
-              }
-            >
-              <small>CREATE</small>
-              <h3>Diet Plan</h3>
-              <p className="link">Use AI →</p>
-            </div>
-          </div>
-        </section>
-
-        {/* PROGRESS */}
-        <section>
-          <h2>Progress</h2>
-          <div className="card center">
-            <div className="consistency">
-              {data.consistency.map((d) => (
-                <span
-                  key={d.date}
-                  className={`dot ${d.worked_out ? "on" : ""}`}
-                />
-              ))}
-            </div>
-            <p className="muted">Consistency (last 14 days)</p>
-          </div>
-        </section>
-
-        {/* AI INSIGHT */}
-        <section>
-          <h2>AI Insight</h2>
-          <div className="card muted">
-            {data.evaluator?.ai_summary ||
-              "Keep showing up. Momentum compounds."}
-          </div>
-        </section>
-
-        <div style={{ height: "90px" }} />
-      </main>
+        {/* AI INSIGHT SECTION */}
+        <SectionHeader title="AI Insight" />
+        <AIInsightCard insight={data.evaluator?.ai_summary} />
+      </div>
 
       <BottomNav />
-    </>
+
+      {/* Global animations */}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% {
+            opacity: 0.3;
+            transform: scale(1);
+          }
+          50% {
+            opacity: 0.5;
+            transform: scale(1.05);
+          }
+        }
+        
+        @keyframes borderGlow {
+          0%, 100% {
+            opacity: 0.5;
+          }
+          50% {
+            opacity: 1;
+          }
+        }
+        
+        @keyframes rotate {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────
+// COMPONENTS
+// ──────────────────────────────────────────
+
+function LoadingState() {
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: "#000",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      color: "#fff",
+    }}>
+      <div style={{
+        display: "flex",
+        gap: 10,
+        alignItems: "center",
+      }}>
+        {[0, 1, 2].map((i) => (
+          <span key={i} style={{
+            width: 12,
+            height: 12,
+            borderRadius: "50%",
+            background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
+            animation: "bounce 1.4s ease-in-out infinite",
+            animationDelay: `${i * 0.2}s`,
+          }} />
+        ))}
+      </div>
+      <style>{`
+        @keyframes bounce {
+          0%, 60%, 100% { transform: translateY(0); }
+          30% { transform: translateY(-12px); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function SectionHeader({ title }) {
+  return (
+    <h2 style={{
+      fontSize: 19,
+      fontWeight: 600,
+      marginTop: 32,
+      marginBottom: 14,
+      letterSpacing: 0.3,
+    }}>
+      {title}
+    </h2>
+  );
+}
+
+function TodayCard({ data }) {
+  const items = [
+    {
+      label: "Workout",
+      value: data.workout === "completed" ? "Completed" : "Pending",
+      status: data.workout === "completed" ? "success" : "pending",
+    },
+    {
+      label: "Diet",
+      value: "Coming soon",
+      status: "muted",
+    },
+    {
+      label: "Reminders",
+      value: `${data.reminders.missed} missed`,
+      status: data.reminders.missed > 0 ? "warning" : "muted",
+    },
+  ];
+
+  return (
+    <div style={{
+      position: "relative",
+      borderRadius: 20,
+      padding: "18px 20px",
+      background: "linear-gradient(135deg, rgba(17, 24, 39, 0.5), rgba(31, 41, 55, 0.3))",
+      backdropFilter: "blur(12px)",
+      marginBottom: 16,
+      overflow: "hidden",
+    }}>
+      {/* ✨ ANIMATED BORDER GLOW */}
+      <div style={{
+        position: "absolute",
+        inset: 0,
+        borderRadius: 20,
+        padding: "1px",
+        background: "linear-gradient(135deg, rgba(139, 92, 246, 0.4), rgba(99, 102, 241, 0.4), rgba(139, 92, 246, 0.4))",
+        WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+        WebkitMaskComposite: "xor",
+        maskComposite: "exclude",
+        animation: "borderGlow 3s ease-in-out infinite",
+        pointerEvents: "none",
+      }} />
+
+      {/* ✨ ROTATING GRADIENT RING */}
+      <div style={{
+        position: "absolute",
+        inset: -20,
+        background: "conic-gradient(from 0deg, transparent 0%, rgba(139, 92, 246, 0.3) 50%, transparent 100%)",
+        animation: "rotate 8s linear infinite",
+        pointerEvents: "none",
+      }} />
+      
+      {/* Content */}
+      <div style={{ position: "relative", zIndex: 1 }}>
+        {items.map((item, i) => (
+          <div
+            key={i}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "12px 0",
+              borderBottom: i < items.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none",
+            }}
+          >
+            <span style={{
+              fontSize: 15,
+              color: "rgba(255,255,255,0.85)",
+              fontWeight: 450,
+            }}>
+              {item.label}
+            </span>
+            <span style={{
+              fontSize: 14,
+              fontWeight: 500,
+              color: item.status === "success"
+                ? "#10b981"
+                : item.status === "warning"
+                ? "#f59e0b"
+                : item.status === "pending"
+                ? "#8b5cf6"
+                : "rgba(255,255,255,0.5)",
+            }}>
+              {item.value}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CreateCard({ icon, label, title, link, color, onClick }) {
+  const [isHover, setIsHover] = useState(false);
+
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setIsHover(true)}
+      onMouseLeave={() => setIsHover(false)}
+      style={{
+        position: "relative",
+        borderRadius: 18,
+        padding: "18px 16px",
+        background: isHover
+          ? `linear-gradient(135deg, rgba(17, 24, 39, 0.7), rgba(31, 41, 55, 0.5))`
+          : "linear-gradient(135deg, rgba(17, 24, 39, 0.5), rgba(31, 41, 55, 0.3))",
+        backdropFilter: "blur(12px)",
+        cursor: "pointer",
+        transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+        transform: isHover ? "translateY(-4px) scale(1.02)" : "translateY(0) scale(1)",
+        boxShadow: isHover
+          ? `0 12px 32px ${color}25, 0 0 0 1px ${color}15`
+          : "none",
+        overflow: "hidden",
+      }}
+    >
+      {/* ✨ ANIMATED BORDER */}
+      <div style={{
+        position: "absolute",
+        inset: 0,
+        borderRadius: 18,
+        padding: "1px",
+        background: isHover
+          ? `linear-gradient(135deg, ${color}60, transparent)`
+          : `linear-gradient(135deg, ${color}20, transparent)`,
+        WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+        WebkitMaskComposite: "xor",
+        maskComposite: "exclude",
+        transition: "background 0.3s ease",
+        pointerEvents: "none",
+      }} />
+
+      {/* Gradient overlay */}
+      <div style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        height: "100%",
+        background: `linear-gradient(135deg, ${color}15, transparent)`,
+        opacity: isHover ? 1 : 0,
+        transition: "opacity 0.3s ease",
+        pointerEvents: "none",
+      }} />
+
+      <div style={{ position: "relative", zIndex: 1 }}>
+        <div style={{
+          fontSize: 32,
+          marginBottom: 8,
+          filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.3))",
+        }}>
+          {icon}
+        </div>
+        <p style={{
+          fontSize: 10,
+          textTransform: "uppercase",
+          letterSpacing: 1,
+          color: "rgba(255,255,255,0.5)",
+          marginBottom: 6,
+          fontWeight: 600,
+        }}>
+          {label}
+        </p>
+        <h3 style={{
+          fontSize: 17,
+          fontWeight: 600,
+          margin: "0 0 8px",
+          letterSpacing: 0.3,
+        }}>
+          {title}
+        </h3>
+        <p style={{
+          fontSize: 13,
+          color: "rgba(255,255,255,0.7)",
+          margin: 0,
+          fontWeight: 450,
+        }}>
+          {link}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ProgressCard({ consistency }) {
+  return (
+    <div style={{
+      position: "relative",
+      borderRadius: 20,
+      padding: "24px 20px",
+      background: "linear-gradient(135deg, rgba(17, 24, 39, 0.5), rgba(31, 41, 55, 0.3))",
+      backdropFilter: "blur(12px)",
+      textAlign: "center",
+      marginBottom: 16,
+      overflow: "hidden",
+    }}>
+      {/* ✨ ANIMATED BORDER */}
+      <div style={{
+        position: "absolute",
+        inset: 0,
+        borderRadius: 20,
+        padding: "1px",
+        background: "linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(99, 102, 241, 0.3))",
+        WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+        WebkitMaskComposite: "xor",
+        maskComposite: "exclude",
+        animation: "borderGlow 3s ease-in-out infinite",
+        pointerEvents: "none",
+      }} />
+
+      <div style={{ position: "relative", zIndex: 1 }}>
+        <div style={{
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+          justifyContent: "center",
+          marginBottom: 16,
+        }}>
+          {consistency.map((d, i) => (
+            <div
+              key={i}
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: "50%",
+                background: d.worked_out
+                  ? "linear-gradient(135deg, #8b5cf6, #6366f1)"
+                  : "rgba(255, 255, 255, 0.08)",
+                boxShadow: d.worked_out ? "0 0 12px rgba(139, 92, 246, 0.6)" : "none",
+                transition: "all 0.3s ease",
+              }}
+            />
+          ))}
+        </div>
+        <p style={{
+          fontSize: 13,
+          color: "rgba(255,255,255,0.5)",
+          margin: 0,
+          fontWeight: 500,
+          letterSpacing: 0.3,
+        }}>
+          Consistency (last 14 days)
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function AIInsightCard({ insight }) {
+  return (
+    <div style={{
+      position: "relative",
+      borderRadius: 20,
+      padding: "20px",
+      background: "linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(99, 102, 241, 0.08))",
+      backdropFilter: "blur(12px)",
+      overflow: "hidden",
+      marginBottom: 24,
+    }}>
+      {/* ✨ ANIMATED TOP BORDER */}
+      <div style={{
+        position: "absolute",
+        top: 0,
+        left: "20%",
+        right: "20%",
+        height: "2px",
+        background: "linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.8), transparent)",
+        borderRadius: "2px",
+        animation: "shimmer 3s ease-in-out infinite",
+      }} />
+
+      {/* ✨ FULL CARD BORDER */}
+      <div style={{
+        position: "absolute",
+        inset: 0,
+        borderRadius: 20,
+        padding: "1px",
+        background: "linear-gradient(135deg, rgba(139, 92, 246, 0.4), rgba(99, 102, 241, 0.4))",
+        WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+        WebkitMaskComposite: "xor",
+        maskComposite: "exclude",
+        animation: "borderGlow 3s ease-in-out infinite",
+        pointerEvents: "none",
+      }} />
+
+      <div style={{ position: "relative", zIndex: 1 }}>
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          marginBottom: 12,
+        }}>
+          <div style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
+            boxShadow: "0 0 12px rgba(139, 92, 246, 0.6)",
+            animation: "pulse 2s ease-in-out infinite",
+          }} />
+          <span style={{
+            fontSize: 11,
+            fontWeight: 700,
+            background: "linear-gradient(135deg, #a78bfa, #818cf8)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            backgroundClip: "text",
+            textTransform: "uppercase",
+            letterSpacing: 1.5,
+          }}>
+            Central AI
+          </span>
+        </div>
+
+        <p style={{
+          fontSize: 14.5,
+          lineHeight: 1.6,
+          color: "rgba(255,255,255,0.85)",
+          margin: 0,
+          fontWeight: 450,
+          letterSpacing: 0.2,
+        }}>
+          {insight || "Keep showing up. Momentum compounds."}
+        </p>
+      </div>
+
+      <style>{`
+        @keyframes shimmer {
+          0%, 100% {
+            transform: translateX(-50%);
+            opacity: 0.4;
+          }
+          50% {
+            transform: translateX(50%);
+            opacity: 1;
+          }
+        }
+      `}</style>
+    </div>
   );
 }

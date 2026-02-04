@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { askCentral } from "../../api/ai";
-import { logEvent } from "../../api/events";
 import GlowingOrb from "../../components/central/GlowingOrb";
 import Suggestions from "../../components/central/Suggestions";
 import TodaysInsight from "../../components/central/TodaysInsight";
@@ -13,49 +12,54 @@ export default function CentralLayout() {
   const location = useLocation();
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
-  const scrollRef = useRef(null);
+  const messagesEndRef = useRef(null);
 
-  // Preset question from another page (e.g. Home → "Create a diet plan")
+  // Handle preset from other pages
   useEffect(() => {
     if (location.state?.preset) {
-      submit(location.state.preset);
+      handleSubmit(location.state.preset);
     }
   }, []);
 
-  // Auto-scroll to bottom whenever messages or loading changes
+  // Auto-scroll to latest message
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  const submit = async (question) => {
+  const handleSubmit = async (question) => {
     if (!question.trim() || loading) return;
 
-    // Log that the user asked something
-    logEvent("central_question_asked", { question }).catch(() => {});
-
+    // Add user message
     setMessages((prev) => [
       ...prev,
       { id: Date.now(), role: "user", content: question },
     ]);
+    
     setLoading(true);
 
     try {
-      const res = await askCentral(question);
+      const response = await askCentral(question);
+      
+      if (!response || !response.answer) {
+        throw new Error("No answer received from API");
+      }
+
+      // Add assistant message
       setMessages((prev) => [
         ...prev,
-        { id: Date.now() + 1, role: "assistant", content: res.answer },
+        { id: Date.now() + 1, role: "assistant", content: response.answer },
       ]);
-      // Log successful answer
-      logEvent("central_answer_received", { question, answerLength: res.answer?.length }).catch(() => {});
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
+      console.error("[CENTRAL] Error:", error);
+      
       setMessages((prev) => [
         ...prev,
-        { id: Date.now() + 1, role: "error", content: "Something went wrong. Please try again." },
+        {
+          id: Date.now() + 1,
+          role: "error",
+          content: `Failed to get response: ${error.message}`,
+        },
       ]);
-      logEvent("central_error", { question, error: err.message }).catch(() => {});
     } finally {
       setLoading(false);
     }
@@ -64,87 +68,71 @@ export default function CentralLayout() {
   const hasMessages = messages.length > 0;
 
   return (
-    <div style={{
-      height: "100vh",
-      display: "flex",
-      flexDirection: "column",
-      background: "#000",
-      color: "#fff",
-      overflow: "hidden", // ← KEY: prevents body scroll, only inner panel scrolls
-    }}>
-      {/* ─── HEADER (static, never scrolls) ─── */}
-      <div style={{
-        flexShrink: 0,
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
-        padding: "56px 24px 12px",
-      }}>
+    <div className="min-h-screen bg-black text-white flex flex-col">
+      {/* ─── HEADER ─── */}
+      <div className="flex items-center justify-between px-6 pt-14 pb-2">
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Central</h1>
-          <p style={{ fontSize: 14, color: "rgba(255,255,255,0.4)", margin: "3px 0 0" }}>
+          <h1 style={{ fontSize: 22, fontWeight: 600 }}>Central</h1>
+          <p style={{ opacity: 0.5, fontSize: 14, marginTop: 2 }}>
             Your personal fitness assistant
           </p>
         </div>
-        <span style={{
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: 1.5,
-          color: "rgba(255,255,255,0.5)",
-        }}>AI</span>
+        <span
+          style={{
+            fontSize: 13,
+            fontWeight: 600,
+            color: "#fff",
+            opacity: 0.7,
+            letterSpacing: 1,
+          }}
+        >
+          AI
+        </span>
       </div>
 
-      {/* ─── SCROLLABLE BODY (this is the ONLY scroll container) ─── */}
-      <div
-        ref={scrollRef}
+      {/* ─── SCROLLABLE BODY ─── */}
+      <div 
+        className="flex-1 overflow-y-auto px-6"
         style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "0 24px",
-          paddingBottom: 90, // space for input + nav
-          WebkitOverflowScrolling: "touch",
+          paddingBottom: "220px",  // ✨ INCREASED: Much more space for input + nav
         }}
       >
         {/* EMPTY STATE */}
         {!hasMessages && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 24, paddingTop: 16 }}>
+          <div className="flex flex-col items-center mt-4 space-y-6">
             <GlowingOrb loading={loading} />
 
-            {/* "What would you like to do?" */}
-            <div style={{
-              width: "100%",
-              padding: "18px 20px",
-              borderRadius: 16,
-              background: "linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02))",
-            }}>
-              <h2 style={{ fontSize: 18, fontWeight: 500, margin: 0, color: "#fff" }}>
+            <div
+              className="w-full rounded-2xl px-5 py-5"
+              style={{
+                background:
+                  "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02))",
+              }}
+            >
+              <h2 style={{ fontSize: 18, fontWeight: 500 }}>
                 What would you like to do?
               </h2>
-              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", margin: "5px 0 0" }}>
+              <p style={{ opacity: 0.5, marginTop: 6, fontSize: 14 }}>
                 I can plan, adjust, and guide your training and nutrition.
               </p>
             </div>
 
-            <div style={{ width: "100%" }}>
-              <Suggestions onSelect={submit} />
-            </div>
-
-            <div style={{ width: "100%" }}>
-              <TodaysInsight />
-            </div>
+            <Suggestions onSelect={handleSubmit} />
+            <TodaysInsight />
           </div>
         )}
 
         {/* MESSAGE HISTORY */}
         {hasMessages && (
-          <div style={{ paddingTop: 12 }}>
+          <div className="mt-6">
             <MessageHistory messages={messages} loading={loading} />
+            <div ref={messagesEndRef} style={{ height: "1px" }} />
           </div>
         )}
       </div>
 
       {/* ─── FIXED INPUT ─── */}
-      <CentralInput onSubmit={submit} disabled={loading} />
+      <CentralInput onSubmit={handleSubmit} disabled={loading} />
 
       {/* ─── BOTTOM NAV ─── */}
       <BottomNav />
