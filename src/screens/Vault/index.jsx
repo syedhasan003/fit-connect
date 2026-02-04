@@ -1,32 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "../../components/navigation/BottomNav";
-
-// API functions (can be moved to separate file)
-const API_BASE = 'http://localhost:8000';
-
-async function fetchVaultItems() {
-  const token = localStorage.getItem('token');
-  const response = await fetch(`${API_BASE}/vault/`, {
-    headers: { 'Authorization': `Bearer ${token}` },
-  });
-  if (!response.ok) throw new Error('Failed to fetch');
-  return response.json();
-}
-
-async function createVaultItem(data) {
-  const token = localStorage.getItem('token');
-  const response = await fetch(`${API_BASE}/vault/`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-  if (!response.ok) throw new Error('Failed to create');
-  return response.json();
-}
+import { fetchVaultItems } from "../../api/vault";
 
 export default function Vault() {
   const navigate = useNavigate();
@@ -46,18 +21,16 @@ export default function Vault() {
       setItems(data);
     } catch (error) {
       console.error("Failed to load vault:", error);
-      setItems([]); // Set empty on error
+      setItems([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Storage calculation (mock for now)
   const storageUsed = 4.2;
   const storageTotal = 10;
   const storagePercent = (storageUsed / storageTotal) * 100;
 
-  // Count items
   const counts = {
     central: items.filter(i => i.source === "central").length,
     workout: items.filter(i => i.type === "workout").length,
@@ -65,7 +38,6 @@ export default function Vault() {
     user: items.filter(i => i.source === "user").length,
   };
 
-  // Filter items
   const filteredUserFiles = items.filter(item => {
     if (item.source !== "user") return false;
     if (searchQuery && !item.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
@@ -80,35 +52,17 @@ export default function Vault() {
       paddingBottom: "100px",
     }}>
       <div style={{ padding: "24px 20px" }}>
-        {/* HEADER */}
         <div style={{ marginBottom: 24 }}>
-          <h1 style={{
-            margin: 0,
-            fontSize: 28,
-            fontWeight: 600,
-            letterSpacing: 0.3,
-          }}>
-            Vault
-          </h1>
-          <p style={{
-            margin: "4px 0 0",
-            fontSize: 14,
-            color: "rgba(255,255,255,0.5)",
-          }}>
+          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 600 }}>Vault</h1>
+          <p style={{ margin: "4px 0 0", fontSize: 14, color: "rgba(255,255,255,0.5)" }}>
             Your personal fitness library — plans, reports, progress & notes.
           </p>
         </div>
 
-        {/* SEARCH BAR */}
         <SearchBar value={searchQuery} onChange={setSearchQuery} />
-
-        {/* FILTER TABS */}
         <FilterTabs active={activeFilter} onChange={setActiveFilter} />
-
-        {/* STORAGE CARD */}
         <StorageCard used={storageUsed} total={storageTotal} percent={storagePercent} />
 
-        {/* PRIMARY SOURCES */}
         <SectionHeader title="Primary Sources" subtitle="Core health & fitness data" />
         <div style={{
           display: "grid",
@@ -122,7 +76,7 @@ export default function Vault() {
             subtitle="AI-generated responses"
             count={counts.central}
             color="#8b5cf6"
-            onClick={() => navigate("/vault/central")}
+            onClick={() => alert("Coming soon! Central Answers view will show all AI responses saved to vault.")}
           />
           <PrimarySourceCard
             icon="🏋️"
@@ -130,7 +84,7 @@ export default function Vault() {
             subtitle="Workout builder plans"
             count={counts.workout}
             color="#6366f1"
-            onClick={() => navigate("/vault/workouts")}
+            onClick={() => alert("Coming soon! Manual Workouts view will show all your saved workout plans.")}
           />
           <PrimarySourceCard
             icon="🍽️"
@@ -138,7 +92,7 @@ export default function Vault() {
             subtitle="Diet builder plans"
             count={counts.diet}
             color="#ec4899"
-            onClick={() => navigate("/vault/diet")}
+            onClick={() => alert("Coming soon! Diet Builder is under construction.")}
             disabled
           />
           <PrimarySourceCard
@@ -156,12 +110,11 @@ export default function Vault() {
             subtitle="Medical documents"
             count={0}
             color="#10b981"
-            onClick={() => navigate("/vault/records")}
+            onClick={() => alert("Coming soon! Health Records for your medical documents.")}
             disabled
           />
         </div>
 
-        {/* MY FILES */}
         <SectionHeader title="My Files" subtitle="Custom files & folders" />
         <div style={{
           display: "grid",
@@ -170,15 +123,10 @@ export default function Vault() {
           marginBottom: 20,
         }}>
           {filteredUserFiles.map(file => (
-            <CustomFileCard
-              key={file.id}
-              file={file}
-              onClick={() => navigate(`/vault/file/${file.id}`)}
-            />
+            <CustomFileCard key={file.id} file={file} onClick={() => alert("File viewer coming soon!")} />
           ))}
         </div>
 
-        {/* NEW FILE BUTTON */}
         <button
           onClick={() => setShowNewFileModal(true)}
           style={{
@@ -206,7 +154,6 @@ export default function Vault() {
         </button>
       </div>
 
-      {/* FAB */}
       <button
         onClick={() => setShowNewFileModal(true)}
         style={{
@@ -245,8 +192,7 @@ export default function Vault() {
       {showNewFileModal && (
         <NewFileModal
           onClose={() => setShowNewFileModal(false)}
-          onSave={async (data) => {
-            await createVaultItem(data);
+          onSave={() => {
             setShowNewFileModal(false);
             loadVaultItems();
           }}
@@ -257,10 +203,6 @@ export default function Vault() {
         @keyframes borderGlow {
           0%, 100% { opacity: 0.5; }
           50% { opacity: 1; }
-        }
-        @keyframes shimmer {
-          0%, 100% { transform: translateX(-50%); opacity: 0.3; }
-          50% { transform: translateX(50%); opacity: 0.7; }
         }
       `}</style>
     </div>
@@ -308,9 +250,7 @@ function FilterTabs({ active, onChange }) {
             padding: "10px 20px",
             borderRadius: 999,
             border: "none",
-            background: active === tab
-              ? "linear-gradient(135deg, #8b5cf6, #6366f1)"
-              : "rgba(255, 255, 255, 0.05)",
+            background: active === tab ? "linear-gradient(135deg, #8b5cf6, #6366f1)" : "rgba(255, 255, 255, 0.05)",
             color: active === tab ? "#fff" : "rgba(255,255,255,0.7)",
             fontSize: 14,
             fontWeight: 600,
@@ -447,11 +387,7 @@ function PrimarySourceCard({ icon, title, subtitle, count, color, locked, disabl
         }} />
       )}
       <div style={{ position: "relative", zIndex: 1 }}>
-        <div style={{
-          fontSize: 32,
-          marginBottom: 12,
-          filter: isHover ? `drop-shadow(0 0 12px ${color}66)` : "drop-shadow(0 2px 8px rgba(0,0,0,0.3))",
-        }}>
+        <div style={{ fontSize: 32, marginBottom: 12, filter: isHover ? `drop-shadow(0 0 12px ${color}66)` : "drop-shadow(0 2px 8px rgba(0,0,0,0.3))" }}>
           {icon}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
@@ -500,9 +436,7 @@ function CustomFileCard({ file, onClick }) {
         position: "relative",
         borderRadius: 16,
         padding: "18px 16px",
-        background: isHover
-          ? "linear-gradient(135deg, rgba(17, 24, 39, 0.6), rgba(31, 41, 55, 0.4))"
-          : "linear-gradient(135deg, rgba(17, 24, 39, 0.4), rgba(31, 41, 55, 0.2))",
+        background: isHover ? "linear-gradient(135deg, rgba(17, 24, 39, 0.6), rgba(31, 41, 55, 0.4))" : "linear-gradient(135deg, rgba(17, 24, 39, 0.4), rgba(31, 41, 55, 0.2))",
         backdropFilter: "blur(12px)",
         cursor: "pointer",
         transition: "all 0.3s ease",
@@ -515,9 +449,7 @@ function CustomFileCard({ file, onClick }) {
         inset: 0,
         borderRadius: 16,
         padding: "1px",
-        background: isHover
-          ? "linear-gradient(135deg, rgba(139, 92, 246, 0.4), rgba(99, 102, 241, 0.4))"
-          : "linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(99, 102, 241, 0.2))",
+        background: isHover ? "linear-gradient(135deg, rgba(139, 92, 246, 0.4), rgba(99, 102, 241, 0.4))" : "linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(99, 102, 241, 0.2))",
         WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
         WebkitMaskComposite: "xor",
         maskComposite: "exclude",
@@ -534,8 +466,6 @@ function CustomFileCard({ file, onClick }) {
 }
 
 function NewFileModal({ onClose, onSave }) {
-  const [title, setTitle] = useState("");
-  const [category, setCategory] = useState("note");
   return (
     <>
       <div onClick={onClose} style={{
@@ -564,94 +494,23 @@ function NewFileModal({ onClose, onSave }) {
           borderRadius: 2,
           margin: "0 auto 24px",
         }} />
-        <h3 style={{ margin: "0 0 24px", fontSize: 20, fontWeight: 600 }}>Create New File</h3>
-        <div style={{ marginBottom: 20 }}>
-          <label style={{ display: "block", marginBottom: 8, fontSize: 14, color: "rgba(255,255,255,0.7)" }}>
-            File Name
-          </label>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="My Custom File"
-            style={{
-              width: "100%",
-              padding: "14px 16px",
-              borderRadius: 12,
-              border: "1px solid rgba(255, 255, 255, 0.1)",
-              background: "rgba(0, 0, 0, 0.3)",
-              color: "#fff",
-              fontSize: 15,
-              outline: "none",
-            }}
-          />
-        </div>
-        <div style={{ marginBottom: 24 }}>
-          <label style={{ display: "block", marginBottom: 8, fontSize: 14, color: "rgba(255,255,255,0.7)" }}>
-            Category
-          </label>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "14px 16px",
-              borderRadius: 12,
-              border: "1px solid rgba(255, 255, 255, 0.1)",
-              background: "rgba(0, 0, 0, 0.3)",
-              color: "#fff",
-              fontSize: 15,
-              outline: "none",
-            }}
-          >
-            <option value="note">Note</option>
-            <option value="workout">Workout</option>
-            <option value="diet">Diet</option>
-            <option value="report">Report</option>
-          </select>
-        </div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <button
-            onClick={onClose}
-            style={{
-              flex: 1,
-              padding: "14px",
-              borderRadius: 14,
-              border: "1px solid rgba(255, 255, 255, 0.1)",
-              background: "rgba(255, 255, 255, 0.05)",
-              color: "#fff",
-              fontSize: 15,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => onSave({
-              type: category,
-              category: 'custom',
-              title,
-              content: {},
-              source: 'user',
-            })}
-            disabled={!title.trim()}
-            style={{
-              flex: 1,
-              padding: "14px",
-              borderRadius: 14,
-              border: "none",
-              background: title.trim() ? "linear-gradient(135deg, #8b5cf6, #6366f1)" : "rgba(255, 255, 255, 0.1)",
-              color: "#fff",
-              fontSize: 15,
-              fontWeight: 600,
-              cursor: title.trim() ? "pointer" : "not-allowed",
-              opacity: title.trim() ? 1 : 0.5,
-            }}
-          >
-            Create
-          </button>
-        </div>
+        <h3 style={{ margin: "0 0 20px", fontSize: 20, fontWeight: 600 }}>Coming Soon!</h3>
+        <p style={{ margin: "0 0 24px", fontSize: 15, color: "rgba(255,255,255,0.7)" }}>
+          File creation will be available soon. For now, your workouts are automatically saved to the vault.
+        </p>
+        <button onClick={onClose} style={{
+          width: "100%",
+          padding: "14px",
+          borderRadius: 14,
+          border: "none",
+          background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
+          color: "#fff",
+          fontSize: 15,
+          fontWeight: 600,
+          cursor: "pointer",
+        }}>
+          Got it
+        </button>
       </div>
     </>
   );

@@ -1,11 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import EXERCISES from "./exercises.js";
+import { createVaultItem } from "../../api/vault";
 
 export default function WorkoutBuilder() {
   const navigate = useNavigate();
   const [days, setDays] = useState([{ muscles: [] }]);
   const [open, setOpen] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   const addDay = () => setDays(prev => [...prev, { muscles: [] }]);
   const removeDay = d => setDays(prev => prev.filter((_, i) => i !== d));
@@ -191,15 +193,42 @@ export default function WorkoutBuilder() {
       )
     );
 
-  const handleSave = () => {
-    console.log("Saving workout:", days);
-    alert("Workout saved! (API integration pending)");
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const totalMuscles = days.reduce((acc, d) => acc + d.muscles.length, 0);
+      const totalExercises = days.reduce((acc, day) => 
+        acc + day.muscles.reduce((mAcc, muscle) =>
+          mAcc + muscle.areas.reduce((aAcc, area) => 
+            aAcc + area.exercises.length, 0
+          ), 0
+        ), 0
+      );
+
+      await createVaultItem({
+        type: "workout",
+        category: "manual",
+        title: `${days.length}-Day Split Workout`,
+        summary: `${days.length} days · ${totalMuscles} muscle groups · ${totalExercises} exercises`,
+        content: {
+          days: days,
+          created_at: new Date().toISOString(),
+        },
+        source: "manual",
+        pinned: false,
+      });
+
+      alert("✅ Workout saved to Vault!");
+    } catch (error) {
+      console.error("Failed to save workout:", error);
+      alert(`❌ ${error.message || 'Failed to save workout. Please try again.'}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  // ✨ FIXED: Proper selector handler
   const handleSelectorSelect = (item) => {
     if (!open) return;
-    
     const parts = open.split('-');
     
     if (open.startsWith('muscle-')) {
@@ -217,10 +246,8 @@ export default function WorkoutBuilder() {
     }
   };
 
-  // ✨ FIXED: Proper selector items
   const getSelectorItems = () => {
     if (!open) return [];
-    
     const parts = open.split('-');
     
     if (open.startsWith('muscle-')) {
@@ -255,7 +282,6 @@ export default function WorkoutBuilder() {
       paddingBottom: "140px",
     }}>
       <div style={{ padding: "24px 20px" }}>
-        {/* HEADER */}
         <div style={{
           display: "flex",
           alignItems: "center",
@@ -295,7 +321,6 @@ export default function WorkoutBuilder() {
           </div>
         </div>
 
-        {/* DAYS */}
         {days.map((day, d) => (
           <DayCard
             key={d}
@@ -317,7 +342,6 @@ export default function WorkoutBuilder() {
           />
         ))}
 
-        {/* ADD DAY BUTTON */}
         <button
           onClick={addDay}
           style={{
@@ -346,9 +370,9 @@ export default function WorkoutBuilder() {
         </button>
       </div>
 
-      {/* SAVE BUTTON */}
       <button
         onClick={handleSave}
+        disabled={saving}
         style={{
           position: "fixed",
           bottom: 24,
@@ -356,28 +380,49 @@ export default function WorkoutBuilder() {
           padding: "16px 32px",
           borderRadius: 999,
           border: "none",
-          background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
+          background: saving 
+            ? "rgba(139, 92, 246, 0.5)" 
+            : "linear-gradient(135deg, #8b5cf6, #6366f1)",
           color: "#fff",
           fontSize: 15,
           fontWeight: 600,
-          cursor: "pointer",
+          cursor: saving ? "not-allowed" : "pointer",
           boxShadow: "0 8px 32px rgba(139, 92, 246, 0.4)",
           transition: "all 0.3s ease",
           zIndex: 50,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          opacity: saving ? 0.7 : 1,
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.transform = "scale(1.05)";
-          e.currentTarget.style.boxShadow = "0 12px 40px rgba(139, 92, 246, 0.6)";
+          if (!saving) {
+            e.currentTarget.style.transform = "scale(1.05)";
+            e.currentTarget.style.boxShadow = "0 12px 40px rgba(139, 92, 246, 0.6)";
+          }
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.transform = "scale(1)";
           e.currentTarget.style.boxShadow = "0 8px 32px rgba(139, 92, 246, 0.4)";
         }}
       >
-        💾 Save Workout
+        {saving ? (
+          <>
+            <div style={{
+              width: 16,
+              height: 16,
+              border: "2px solid rgba(255,255,255,0.3)",
+              borderTop: "2px solid #fff",
+              borderRadius: "50%",
+              animation: "spin 0.8s linear infinite",
+            }} />
+            Saving...
+          </>
+        ) : (
+          <>💾 Save to Vault</>
+        )}
       </button>
 
-      {/* GLOBAL MODAL */}
       {open && (
         <Selector 
           items={getSelectorItems()} 
@@ -390,6 +435,9 @@ export default function WorkoutBuilder() {
         @keyframes borderGlow {
           0%, 100% { opacity: 0.5; }
           50% { opacity: 1; }
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </div>
@@ -407,7 +455,6 @@ function DayCard({ day, dayIndex, daysLength, open, setOpen, onRemoveDay, onAddM
       backdropFilter: "blur(16px)",
       overflow: "visible",
     }}>
-      {/* Animated border */}
       <div style={{
         position: "absolute",
         inset: 0,
@@ -579,45 +626,62 @@ function AreaBlock({ area, dayIndex, muscleIndex, areaIndex, muscleName, open, s
 function ExerciseCard({ exercise, onRemove, onAddSet, onUpdateSet, onRemoveSet }) {
   return (
     <div style={{
+      position: "relative",
       marginTop: 12,
       borderRadius: 14,
       padding: "14px",
       background: "rgba(0, 0, 0, 0.5)",
-      border: "1px solid rgba(255, 255, 255, 0.03)",
+      overflow: "hidden",
     }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <strong style={{ fontSize: 14, color: "#fff", fontWeight: 600 }}>{exercise.name}</strong>
-        <button onClick={onRemove} style={{
-          width: 24,
-          height: 24,
-          borderRadius: "50%",
-          border: "none",
-          background: "rgba(239, 68, 68, 0.15)",
-          color: "#ef4444",
-          cursor: "pointer",
-          fontSize: 12,
-        }}>✕</button>
-      </div>
+      {/* ✨ ANIMATED BORDER - PINK/PURPLE GRADIENT */}
+      <div style={{
+        position: "absolute",
+        inset: 0,
+        borderRadius: 14,
+        padding: "1px",
+        background: "linear-gradient(135deg, rgba(236, 72, 153, 0.4), rgba(168, 85, 247, 0.4))",
+        WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+        WebkitMaskComposite: "xor",
+        maskComposite: "exclude",
+        animation: "borderGlow 3s ease-in-out infinite",
+        pointerEvents: "none",
+      }} />
 
-      {exercise.sets.map((set, s) => (
-        <div key={s} style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr) auto", gap: 8, marginBottom: 8 }}>
-          <Input placeholder="Reps" value={set.reps} onChange={(e) => onUpdateSet(s, "reps", e.target.value)} />
-          <Input placeholder="Weight" value={set.weight} onChange={(e) => onUpdateSet(s, "weight", e.target.value)} />
-          <Input placeholder="RIR" value={set.rir} onChange={(e) => onUpdateSet(s, "rir", e.target.value)} />
-          <button onClick={() => onRemoveSet(s)} style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
+      <div style={{ position: "relative", zIndex: 1 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <strong style={{ fontSize: 14, color: "#fff", fontWeight: 600 }}>{exercise.name}</strong>
+          <button onClick={onRemove} style={{
+            width: 24,
+            height: 24,
+            borderRadius: "50%",
             border: "none",
-            background: "rgba(239, 68, 68, 0.12)",
+            background: "rgba(239, 68, 68, 0.15)",
             color: "#ef4444",
             cursor: "pointer",
-            fontSize: 14,
+            fontSize: 12,
           }}>✕</button>
         </div>
-      ))}
 
-      <SmallButton onClick={onAddSet} text="+ Add Set" color="#10b981" ghost />
+        {exercise.sets.map((set, s) => (
+          <div key={s} style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr) auto", gap: 8, marginBottom: 8 }}>
+            <Input placeholder="Reps" value={set.reps} onChange={(e) => onUpdateSet(s, "reps", e.target.value)} />
+            <Input placeholder="Weight" value={set.weight} onChange={(e) => onUpdateSet(s, "weight", e.target.value)} />
+            <Input placeholder="RIR" value={set.rir} onChange={(e) => onUpdateSet(s, "rir", e.target.value)} />
+            <button onClick={() => onRemoveSet(s)} style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              border: "none",
+              background: "rgba(239, 68, 68, 0.12)",
+              color: "#ef4444",
+              cursor: "pointer",
+              fontSize: 14,
+            }}>✕</button>
+          </div>
+        ))}
+
+        <SmallButton onClick={onAddSet} text="+ Add Set" color="#10b981" ghost />
+      </div>
     </div>
   );
 }

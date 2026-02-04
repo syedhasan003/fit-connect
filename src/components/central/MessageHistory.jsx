@@ -1,4 +1,6 @@
+import { useState } from "react";
 import MarkdownRenderer from "./MarkdownRenderer";
+import { createVaultItem } from "../../api/vault";
 
 export default function MessageHistory({ messages, loading }) {
   if (!messages || messages.length === 0) return null;
@@ -14,6 +16,68 @@ export default function MessageHistory({ messages, loading }) {
 }
 
 function MessageBubble({ message, index }) {
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  // Detect if response contains workout structure
+  const isWorkout = (content) => {
+    const workoutKeywords = ['workout', 'exercise', 'sets', 'reps', '🏋️'];
+    const lowerContent = content.toLowerCase();
+    return workoutKeywords.some(kw => lowerContent.includes(kw)) && 
+           (lowerContent.includes('sets') || lowerContent.includes('reps'));
+  };
+
+  // Extract workout data if it's a workout response
+  const extractWorkoutData = (content) => {
+    // Simple extraction - looks for exercise patterns
+    const lines = content.split('\n');
+    const exercises = [];
+    
+    lines.forEach(line => {
+      // Match patterns like "1. **Exercise Name**" or "- **Exercise**"
+      const match = line.match(/(?:\d+\.|[-*])\s+\*\*(.+?)\*\*/);
+      if (match) {
+        exercises.push({ name: match[1].trim() });
+      }
+    });
+    
+    return exercises.length > 0 ? exercises : null;
+  };
+
+  const handleSaveToVault = async () => {
+    setSaving(true);
+    try {
+      const content = message.content;
+      const workoutData = extractWorkoutData(content);
+      
+      // Determine type and extract title
+      const isWorkoutContent = isWorkout(content);
+      const lines = content.split('\n').filter(l => l.trim());
+      const title = lines[0]?.replace(/[*#]/g, '').trim() || 
+                    (isWorkoutContent ? "Workout Plan" : "Central Answer");
+      
+      await createVaultItem({
+        type: isWorkoutContent ? "workout" : "answer",
+        category: "central",
+        title: title,
+        summary: lines[1]?.substring(0, 100) || "",
+        content: {
+          raw: content,
+          ...(workoutData && { exercises: workoutData }),
+        },
+        source: "central",
+        pinned: false,
+      });
+      
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (error) {
+      console.error("Failed to save:", error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (message.role === "user") {
     return (
       <div 
@@ -112,7 +176,7 @@ function MessageBubble({ message, index }) {
     );
   }
 
-  // ── Assistant Response - NO HEIGHT LIMIT ──
+  // ── Assistant Response WITH SAVE BUTTON ──
   return (
     <div 
       style={{ 
@@ -175,16 +239,81 @@ function MessageBubble({ message, index }) {
           </span>
         </div>
 
-        {/* Message content - FULL HEIGHT, NO RESTRICTIONS */}
+        {/* Message content */}
         <div style={{ 
           color: "rgba(255,255,255,0.90)",
           fontSize: 15.5,
           lineHeight: 1.75,
-          // ✨ NO maxHeight - let it expand fully!
-          // ✨ NO overflow - page scroll handles it
         }}>
           <MarkdownRenderer text={message.content} />
         </div>
+
+        {/* SAVE TO VAULT BUTTON */}
+        <button
+          onClick={handleSaveToVault}
+          disabled={saving || saved}
+          style={{
+            position: "absolute",
+            bottom: 12,
+            right: 12,
+            padding: "8px 16px",
+            borderRadius: 999,
+            border: "none",
+            background: saved
+              ? "linear-gradient(135deg, #10b981, #059669)"
+              : "linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(99, 102, 241, 0.15))",
+            color: saved ? "#fff" : "#a78bfa",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: saving || saved ? "default" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            transition: "all 0.3s ease",
+            backdropFilter: "blur(12px)",
+            boxShadow: saved
+              ? "0 4px 16px rgba(16, 185, 129, 0.3)"
+              : "0 4px 16px rgba(139, 92, 246, 0.2)",
+          }}
+          onMouseEnter={(e) => {
+            if (!saving && !saved) {
+              e.currentTarget.style.background = "linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(99, 102, 241, 0.25))";
+              e.currentTarget.style.transform = "translateY(-2px)";
+              e.currentTarget.style.boxShadow = "0 6px 20px rgba(139, 92, 246, 0.3)";
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!saving && !saved) {
+              e.currentTarget.style.background = "linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(99, 102, 241, 0.15))";
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = "0 4px 16px rgba(139, 92, 246, 0.2)";
+            }
+          }}
+        >
+          {saving ? (
+            <>
+              <div style={{
+                width: 12,
+                height: 12,
+                border: "2px solid rgba(255,255,255,0.3)",
+                borderTop: "2px solid #a78bfa",
+                borderRadius: "50%",
+                animation: "spin 0.8s linear infinite",
+              }} />
+              <span>Saving...</span>
+            </>
+          ) : saved ? (
+            <>
+              <span>✓</span>
+              <span>Saved!</span>
+            </>
+          ) : (
+            <>
+              <span>📥</span>
+              <span>Save to Vault</span>
+            </>
+          )}
+        </button>
       </div>
 
       <style>{`
@@ -232,6 +361,10 @@ function MessageBubble({ message, index }) {
             transform: scale(0.92);
             boxShadow: 0 0 12px rgba(139, 92, 246, 0.5), 0 0 3px rgba(99, 102, 241, 0.3);
           }
+        }
+        
+        @keyframes spin {
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </div>

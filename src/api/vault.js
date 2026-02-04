@@ -2,120 +2,147 @@
 
 const API_BASE = 'http://localhost:8000';
 
-export async function fetchVaultItems() {
+// Helper to get token
+function getAuthHeaders() {
   const token = localStorage.getItem('token');
-  const response = await fetch(`${API_BASE}/vault/`, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-  });
-  
-  if (!response.ok) {
-    throw new Error('Failed to fetch vault items');
+  if (!token) {
+    throw new Error('No authentication token found. Please log in.');
   }
-  
-  return response.json();
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  };
+}
+
+export async function fetchVaultItems() {
+  try {
+    const response = await fetch(`${API_BASE}/vault/`, {
+      headers: getAuthHeaders(),
+    });
+    
+    if (response.status === 401) {
+      throw new Error('Authentication failed. Please log in again.');
+    }
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch vault items: ${response.status}`);
+    }
+    
+    return response.json();
+  } catch (error) {
+    console.error('Vault fetch error:', error);
+    throw error;
+  }
 }
 
 export async function fetchVaultItem(itemId) {
-  const token = localStorage.getItem('token');
-  const response = await fetch(`${API_BASE}/vault/${itemId}`, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-  });
-  
-  if (!response.ok) {
-    throw new Error('Failed to fetch vault item');
+  try {
+    const response = await fetch(`${API_BASE}/vault/${itemId}`, {
+      headers: getAuthHeaders(),
+    });
+    
+    if (response.status === 401) {
+      throw new Error('Authentication failed. Please log in again.');
+    }
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch vault item: ${response.status}`);
+    }
+    
+    return response.json();
+  } catch (error) {
+    console.error('Vault item fetch error:', error);
+    throw error;
   }
-  
-  return response.json();
 }
 
 export async function createVaultItem(data) {
-  const token = localStorage.getItem('token');
-  const response = await fetch(`${API_BASE}/vault/`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-  
-  if (!response.ok) {
-    throw new Error('Failed to create vault item');
+  try {
+    const response = await fetch(`${API_BASE}/vault/`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    
+    if (response.status === 401) {
+      throw new Error('Authentication failed. Please log in again.');
+    }
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Vault create error response:', errorText);
+      throw new Error(`Failed to create vault item: ${response.status}`);
+    }
+    
+    return response.json();
+  } catch (error) {
+    console.error('Vault create error:', error);
+    throw error;
   }
-  
-  return response.json();
 }
 
 export async function updateVaultItem(itemId, data) {
-  const token = localStorage.getItem('token');
-  const response = await fetch(`${API_BASE}/vault/${itemId}`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-  
-  if (!response.ok) {
-    throw new Error('Failed to update vault item');
+  try {
+    const response = await fetch(`${API_BASE}/vault/${itemId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    
+    if (response.status === 401) {
+      throw new Error('Authentication failed. Please log in again.');
+    }
+    
+    if (!response.ok) {
+      throw new Error(`Failed to update vault item: ${response.status}`);
+    }
+    
+    return response.json();
+  } catch (error) {
+    console.error('Vault update error:', error);
+    throw error;
   }
-  
-  return response.json();
 }
 
 export async function deleteVaultItem(itemId) {
-  const token = localStorage.getItem('token');
-  const response = await fetch(`${API_BASE}/vault/${itemId}`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-  });
-  
-  if (!response.ok) {
-    throw new Error('Failed to delete vault item');
+  try {
+    const response = await fetch(`${API_BASE}/vault/${itemId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    
+    if (response.status === 401) {
+      throw new Error('Authentication failed. Please log in again.');
+    }
+    
+    if (!response.ok) {
+      throw new Error(`Failed to delete vault item: ${response.status}`);
+    }
+    
+    return response.json();
+  } catch (error) {
+    console.error('Vault delete error:', error);
+    throw error;
   }
-  
-  return response.json();
 }
 
 export async function fetchHealthTimeline() {
-  const token = localStorage.getItem('token');
-  const response = await fetch(`${API_BASE}/vault/health-timeline`, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-  });
-  
-  if (!response.ok) {
-    throw new Error('Failed to fetch health timeline');
+  try {
+    const response = await fetch(`${API_BASE}/vault/health-timeline`, {
+      headers: getAuthHeaders(),
+    });
+    
+    if (response.status === 401) {
+      throw new Error('Authentication failed. Please log in again.');
+    }
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch health timeline: ${response.status}`);
+    }
+    
+    return response.json();
+  } catch (error) {
+    console.error('Health timeline fetch error:', error);
+    throw error;
   }
-  
-  return response.json();
-}
-
-// Calculate storage usage (files in vault)
-export async function calculateStorageUsage() {
-  const token = localStorage.getItem('token');
-  const response = await fetch(`${API_BASE}/vault/storage`, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-  });
-  
-  if (!response.ok) {
-    // Return mock data if endpoint doesn't exist yet
-    return {
-      used: 4.2,
-      total: 10,
-      percent: 42,
-    };
-  }
-  
-  return response.json();
 }
