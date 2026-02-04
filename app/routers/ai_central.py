@@ -44,6 +44,107 @@ def get_orchestrator():
     return _central_agent
 
 
+def format_agent_response(agent_result) -> str:
+    """
+    Convert structured agent response to beautiful markdown.
+    Handles both dict responses and string responses.
+    """
+    if isinstance(agent_result, str):
+        return agent_result
+    
+    if not isinstance(agent_result, dict):
+        return str(agent_result)
+    
+    # Extract fields
+    title = agent_result.get("title", "")
+    message = agent_result.get("message", "")
+    summary = agent_result.get("summary", "")
+    mindset_reframe = agent_result.get("mindset_reframe", "")
+    suggestions = agent_result.get("suggestions", [])
+    actions = agent_result.get("actions", [])
+    next_steps = agent_result.get("next_steps", "")
+    safety_notes = agent_result.get("safety_notes", "")
+    exercises = agent_result.get("exercises", [])
+    meals = agent_result.get("meals", [])
+    
+    # Build markdown
+    parts = []
+    
+    # Title (bold and prominent)
+    if title:
+        parts.append(f"**{title}**\n")
+    
+    # Main message/summary
+    if message:
+        parts.append(message)
+    elif summary:
+        parts.append(summary)
+    
+    # Exercises (for workout plans)
+    if exercises:
+        parts.append("\n### 🏋️ Your Workout")
+        for i, ex in enumerate(exercises, 1):
+            if isinstance(ex, dict):
+                name = ex.get("name", "Exercise")
+                sets = ex.get("sets", "")
+                reps = ex.get("reps", "")
+                rest = ex.get("rest", "")
+                notes = ex.get("notes", "")
+                parts.append(f"{i}. **{name}**")
+                if sets and reps:
+                    parts.append(f"   - {sets} sets × {reps} reps" + (f" • Rest: {rest}" if rest else ""))
+                if notes:
+                    parts.append(f"   - {notes}")
+            else:
+                parts.append(f"{i}. {ex}")
+    
+    # Meals (for diet plans)
+    if meals:
+        parts.append("\n### 🍽️ Your Meal Plan")
+        for i, meal in enumerate(meals, 1):
+            if isinstance(meal, dict):
+                name = meal.get("name", "Meal")
+                foods = meal.get("foods", [])
+                parts.append(f"{i}. **{name}**")
+                for food in foods:
+                    parts.append(f"   - {food}")
+            else:
+                parts.append(f"{i}. {meal}")
+    
+    # Mindset reframe (special formatting)
+    if mindset_reframe:
+        parts.append(f"\n### 💭 Mindset Shift\n{mindset_reframe}")
+    
+    # Suggestions
+    if suggestions:
+        parts.append("\n### 💡 Tips")
+        for suggestion in suggestions:
+            if isinstance(suggestion, dict):
+                parts.append(f"- {suggestion.get('text', suggestion.get('tip', str(suggestion)))}")
+            else:
+                parts.append(f"- {suggestion}")
+    
+    # Actions (actionable tips)
+    if actions:
+        parts.append("\n### ✅ Action Steps")
+        for i, action in enumerate(actions, 1):
+            if isinstance(action, dict):
+                tip = action.get("tip", action.get("action", str(action)))
+                parts.append(f"{i}. {tip}")
+            else:
+                parts.append(f"{i}. {action}")
+    
+    # Next steps
+    if next_steps:
+        parts.append(f"\n### 🎯 Next Steps\n{next_steps}")
+    
+    # Safety notes (always at the end)
+    if safety_notes:
+        parts.append(f"\n---\n\n*{safety_notes}*")
+    
+    return "\n".join(parts) if parts else "I'm here to help! What would you like to know?"
+
+
 @router.post("/ask", response_model=CentralAnswer)
 async def ask_central_ai(
     payload: CentralQuestion,
@@ -53,16 +154,14 @@ async def ask_central_ai(
     """
     Central AI Brain (UNIFIED WITH ORCHESTRATOR)
     
-    This endpoint now routes through the orchestrator for intelligent
-    multi-agent responses while maintaining backward compatibility.
-    
     Flow:
     1. Build user context (memory, profile, vault items)
     2. Route through orchestrator for intent classification
     3. Select appropriate agent (Coach, Dietician, etc.)
     4. Generate response with full context awareness
-    5. Store AI insight in memory
-    6. Run reflection loop for learning
+    5. Format response as beautiful markdown
+    6. Store AI insight in memory
+    7. Run reflection loop for learning
     """
 
     question = payload.question
@@ -73,7 +172,7 @@ async def ask_central_ai(
         # --------------------------------------------------
         context = ContextBuilder.build(user_id=current_user.id, db=db)
         
-        # Add vault items (uploaded documents, images, etc.)
+        # Add vault items
         vault_items = (
             db.query(VaultItem)
             .filter(VaultItem.user_id == current_user.id)
@@ -84,15 +183,14 @@ async def ask_central_ai(
         
         context["vault"] = [
             {
-                "type": item.item_type,
-                "category": item.category,
-                "title": item.title,
-                "created_at": item.created_at.isoformat() if item.created_at else None,
+                "type": getattr(item, "item_type", None) or getattr(item, "type", None) or "unknown",
+                "category": getattr(item, "category", None),
+                "title": getattr(item, "title", None) or getattr(item, "name", None),
+                "created_at": item.created_at.isoformat() if getattr(item, "created_at", None) else None,
             }
             for item in vault_items
         ]
         
-        # Add database session to context
         context["db"] = db
 
         # --------------------------------------------------
@@ -115,36 +213,15 @@ async def ask_central_ai(
         decisions = final.get("decisions", [])
         
         if not decisions:
-            # Fallback to direct OpenAI if orchestrator returns nothing
+            # Fallback to direct OpenAI
             answer = await _fallback_openai_response(question, current_user, db)
         else:
-            # Extract primary agent response
+            # Extract and format primary agent response
             primary_decision = decisions[0]
             agent_result = primary_decision.get("result", {})
             
-            # Format response for frontend
-            if isinstance(agent_result, dict):
-                # Structured response from agent
-                title = agent_result.get("title", "")
-                summary = agent_result.get("summary", "")
-                suggestions = agent_result.get("suggestions", [])
-                next_steps = agent_result.get("next_steps", "")
-                
-                answer_parts = []
-                if title:
-                    answer_parts.append(f"**{title}**\n")
-                if summary:
-                    answer_parts.append(summary)
-                if suggestions:
-                    answer_parts.append("\n\n**Suggestions:**")
-                    for suggestion in suggestions:
-                        answer_parts.append(f"• {suggestion}")
-                if next_steps:
-                    answer_parts.append(f"\n\n**Next Steps:** {next_steps}")
-                
-                answer = "\n".join(answer_parts) if answer_parts else str(agent_result)
-            else:
-                answer = str(agent_result)
+            # Format response
+            answer = format_agent_response(agent_result)
 
             # --------------------------------------------------
             # RUN REFLECTION LOOP (LEARNING)
@@ -158,7 +235,6 @@ async def ask_central_ai(
                 )
             except Exception as e:
                 print(f"[REFLECTION ERROR] {e}")
-                # Don't fail the request if reflection fails
 
         # --------------------------------------------------
         # STORE AI INSIGHT IN MEMORY
@@ -168,7 +244,7 @@ async def ask_central_ai(
                 HealthMemory(
                     user_id=current_user.id,
                     category="ai_insight",
-                    content=answer,
+                    content=answer[:500],
                 )
             )
             db.commit()
@@ -183,7 +259,7 @@ async def ask_central_ai(
 
     except Exception as e:
         print(f"[CENTRAL ERROR] {e}")
-        # Fallback to simple OpenAI if orchestrator fails
+        # Fallback to simple OpenAI
         try:
             answer = await _fallback_openai_response(question, current_user, db)
             return CentralAnswer(question=question, answer=answer)
@@ -199,12 +275,8 @@ async def _fallback_openai_response(
     current_user: User,
     db: Session,
 ) -> str:
-    """
-    Fallback to direct OpenAI call if orchestrator fails.
-    Uses correct OpenAI API format.
-    """
+    """Fallback to direct OpenAI call if orchestrator fails."""
     
-    # Fetch recent memories
     memories = (
         db.query(HealthMemory)
         .filter(HealthMemory.user_id == current_user.id)
@@ -221,33 +293,51 @@ async def _fallback_openai_response(
     
     system_prompt = f"""You are Central, the fitness AI assistant for FitConnect.
 
-You help users with:
-- Workout planning and advice
-- Nutrition guidance
-- Habit formation
-- Progress tracking
-- Motivation and mindset
-
-SAFETY RULES:
-- You are NOT a doctor
-- Never diagnose medical conditions
-- Never prescribe medications
-- Always suggest consulting professionals for medical concerns
-- Be supportive and encouraging
+CRITICAL INSTRUCTIONS:
+- Be SPECIFIC and ACTIONABLE, not just motivational
+- When asked for workouts: provide ACTUAL exercises with sets, reps, rest times
+- When asked for diet plans: provide ACTUAL meals with portions
+- Focus on practical, concrete advice
+- Include numbers, measurements, and specifics
+- Format with markdown for clarity
 
 USER CONTEXT:
 {memory_text}
 
-Respond in a friendly, motivating, and practical way."""
+RESPONSE FORMAT:
+For workouts, use this structure:
+**[Title]**
 
-    # FIXED: Correct OpenAI API call
+[Brief intro]
+
+### 🏋️ Your Workout
+1. **[Exercise Name]**
+   - [Sets] sets × [Reps] reps • Rest: [Time]
+   - [Optional form notes]
+
+For meal plans, use this structure:
+**[Title]**
+
+[Brief intro]
+
+### 🍽️ Your Meals
+1. **[Meal Name]** ([Calories]kcal)
+   - [Food 1] - [Portion]
+   - [Food 2] - [Portion]
+
+### 💡 Tips
+- [Practical tip 1]
+- [Practical tip 2]
+
+*[Safety note if relevant]*"""
+
     response = client.chat.completions.create(
-        model="gpt-4o-mini",  # Correct model name
+        model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": question},
         ],
-        max_tokens=1000,
+        max_tokens=1500,  # Increased for more detailed responses
         temperature=0.7,
     )
     

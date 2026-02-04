@@ -88,6 +88,11 @@ from app.routers import reminder_reasoning
 from app.routers import reminder_behavior
 
 # -------------------------------------------------
+# Behavioural Event Log
+# -------------------------------------------------
+from app.routers import behaviour
+
+# -------------------------------------------------
 # Orchestrator App (ISOLATED)
 # -------------------------------------------------
 from app.ai.orchestrator.orchestrator import app as orchestrator_app
@@ -168,6 +173,9 @@ app.include_router(onboarding_health.router)
 app.include_router(reminder_reasoning.router)
 app.include_router(reminder_behavior.router)
 
+# Behavioural Event Log
+app.include_router(behaviour.router)
+
 # -------------------------------------------------
 # ORCHESTRATOR
 # -------------------------------------------------
@@ -179,3 +187,10 @@ app.mount("/orchestrate", orchestrator_app)
 @app.on_event("startup")
 def on_startup():
     init_db()
+
+    # Create behaviour_log table if it doesn't exist yet
+    from sqlalchemy import text
+    from app.db.database import get_db
+    db = next(get_db())
+    db.execute(text(behaviour.CREATE_TABLE_SQL))
+    db.commit()
