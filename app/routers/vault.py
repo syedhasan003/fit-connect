@@ -97,3 +97,53 @@ def get_vault_item(
         raise HTTPException(status_code=404, detail="Vault item not found")
 
     return item
+
+
+# -------------------------------------------------
+# UPDATE VAULT ITEM (PATCH)
+# -------------------------------------------------
+@router.patch("/{item_id}", response_model=VaultResponse)
+def update_vault_item(
+    item_id: int,
+    payload: VaultCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Update a Vault item (partial update).
+    """
+    item = vault_service.update_item(
+        db=db,
+        user=current_user,
+        item_id=item_id,
+        updates=payload.dict(exclude_unset=True),
+    )
+
+    if not item:
+        raise HTTPException(status_code=404, detail="Vault item not found")
+
+    return item
+
+
+# -------------------------------------------------
+# DELETE VAULT ITEM
+# -------------------------------------------------
+@router.delete("/{item_id}")
+def delete_vault_item(
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Delete a Vault item by ID.
+    """
+    success = vault_service.delete_item(
+        db=db,
+        user=current_user,
+        item_id=item_id,
+    )
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Vault item not found")
+
+    return {"message": "Item deleted successfully", "item_id": item_id}

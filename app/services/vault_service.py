@@ -76,3 +76,62 @@ class VaultService:
             )
             .first()
         )
+
+    # -------------------------------------------------
+    # UPDATE
+    # -------------------------------------------------
+    def update_item(
+        self,
+        db: Session,
+        user: User,
+        item_id: int,
+        updates: dict,
+    ) -> Optional[VaultItem]:
+        """
+        Update a vault item with partial data.
+        Only updates fields that are provided in the updates dict.
+        """
+        item = db.query(VaultItem).filter(
+            VaultItem.id == item_id,
+            VaultItem.user_id == user.id
+        ).first()
+        
+        if not item:
+            return None
+        
+        # Update only provided fields
+        for key, value in updates.items():
+            if hasattr(item, key):
+                setattr(item, key, value)
+        
+        # Always update the timestamp
+        item.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.refresh(item)
+        return item
+
+    # -------------------------------------------------
+    # DELETE
+    # -------------------------------------------------
+    def delete_item(
+        self,
+        db: Session,
+        user: User,
+        item_id: int,
+    ) -> bool:
+        """
+        Delete a vault item.
+        Returns True if deleted, False if not found.
+        """
+        item = db.query(VaultItem).filter(
+            VaultItem.id == item_id,
+            VaultItem.user_id == user.id
+        ).first()
+        
+        if not item:
+            return False
+        
+        db.delete(item)
+        db.commit()
+        return True
