@@ -76,7 +76,7 @@ export default function Vault() {
             subtitle="AI-generated responses"
             count={counts.central}
             color="#8b5cf6"
-            onClick={() => alert("Coming soon! Central Answers view will show all AI responses saved to vault.")}
+            onClick={() => navigate("/vault/central")}
           />
           <PrimarySourceCard
             icon="🏋️"
@@ -84,7 +84,7 @@ export default function Vault() {
             subtitle="Workout builder plans"
             count={counts.workout}
             color="#6366f1"
-            onClick={() => alert("Coming soon! Manual Workouts view will show all your saved workout plans.")}
+            onClick={() => navigate("/vault/workouts")}
           />
           <PrimarySourceCard
             icon="🍽️"

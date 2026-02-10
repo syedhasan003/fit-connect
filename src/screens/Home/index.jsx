@@ -2,20 +2,79 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "../../components/navigation/BottomNav";
 import { fetchHomeOverview } from "../../api/home";
+import { useAuth } from "../../auth/AuthContext";
 
 export default function Home() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchHomeOverview()
-      .then(setData)
-      .catch(console.error);
-  }, []);
+      .then((response) => {
+        console.log('✅ Home data received:', response);
+        setData(response);
+      })
+      .catch((err) => {
+        console.error('❌ Home fetch error:', err);
+        
+        // ✅ If 401 (auth failed), force logout and redirect to login
+        if (err.message.includes('Authentication failed') || err.message.includes('401')) {
+          console.log('🚪 Auth failed - logging out...');
+          logout();
+          navigate('/login', { replace: true });
+        } else {
+          setError(err.message);
+        }
+      });
+  }, [logout, navigate]);
+
+  if (error) {
+    return (
+      <div style={{
+        minHeight: "100vh",
+        background: "#000",
+        color: "#fff",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexDirection: "column",
+        gap: 16,
+        padding: 20,
+      }}>
+        <div style={{ fontSize: 48 }}>⚠️</div>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>Error Loading Home</h2>
+        <p style={{ margin: 0, fontSize: 14, color: "rgba(255,255,255,0.6)", textAlign: "center" }}>
+          {error}
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          style={{
+            padding: "12px 24px",
+            borderRadius: 12,
+            border: "none",
+            background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
+            color: "#fff",
+            fontSize: 14,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   if (!data) return <LoadingState />;
 
-  const name = data.user.full_name || data.user.email.split("@")[0];
+  // ✅ SAFE DATA ACCESS with fallbacks
+  const user = data.user || {};
+  const name = user.full_name || user.email?.split("@")[0] || "User";
+  const today = data.today || { workout: "pending", reminders: { missed: 0 } };
+  const consistency = data.consistency || [];
+  const aiSummary = data.evaluator?.ai_summary || "Keep showing up. Momentum compounds.";
 
   return (
     <div style={{
@@ -45,7 +104,6 @@ export default function Home() {
           boxShadow: "0 8px 24px rgba(139, 92, 246, 0.2)",
           position: "relative",
         }}>
-          {/* Animated ring */}
           <div style={{
             position: "absolute",
             inset: -4,
@@ -82,7 +140,7 @@ export default function Home() {
       <div style={{ padding: "0 20px" }}>
         {/* TODAY SECTION */}
         <SectionHeader title="Today" />
-        <TodayCard data={data.today} />
+        <TodayCard data={today} />
 
         {/* CREATE SECTION */}
         <SectionHeader title="Create" />
@@ -114,16 +172,15 @@ export default function Home() {
 
         {/* PROGRESS SECTION */}
         <SectionHeader title="Progress" />
-        <ProgressCard consistency={data.consistency} />
+        <ProgressCard consistency={consistency} />
 
         {/* AI INSIGHT SECTION */}
         <SectionHeader title="AI Insight" />
-        <AIInsightCard insight={data.evaluator?.ai_summary} />
+        <AIInsightCard insight={aiSummary} />
       </div>
 
       <BottomNav />
 
-      {/* Global animations */}
       <style>{`
         @keyframes pulse {
           0%, 100% {
@@ -153,10 +210,6 @@ export default function Home() {
     </div>
   );
 }
-
-// ──────────────────────────────────────────
-// COMPONENTS
-// ──────────────────────────────────────────
 
 function LoadingState() {
   return (
@@ -222,8 +275,8 @@ function TodayCard({ data }) {
     },
     {
       label: "Reminders",
-      value: `${data.reminders.missed} missed`,
-      status: data.reminders.missed > 0 ? "warning" : "muted",
+      value: `${data.reminders?.missed || 0} missed`,
+      status: (data.reminders?.missed || 0) > 0 ? "warning" : "muted",
     },
   ];
 
@@ -237,7 +290,6 @@ function TodayCard({ data }) {
       marginBottom: 16,
       overflow: "hidden",
     }}>
-      {/* ✨ ANIMATED BORDER GLOW */}
       <div style={{
         position: "absolute",
         inset: 0,
@@ -251,7 +303,6 @@ function TodayCard({ data }) {
         pointerEvents: "none",
       }} />
 
-      {/* ✨ ROTATING GRADIENT RING */}
       <div style={{
         position: "absolute",
         inset: -20,
@@ -260,7 +311,6 @@ function TodayCard({ data }) {
         pointerEvents: "none",
       }} />
       
-      {/* Content */}
       <div style={{ position: "relative", zIndex: 1 }}>
         {items.map((item, i) => (
           <div
@@ -325,7 +375,6 @@ function CreateCard({ icon, label, title, link, color, onClick }) {
         overflow: "hidden",
       }}
     >
-      {/* ✨ ANIMATED BORDER */}
       <div style={{
         position: "absolute",
         inset: 0,
@@ -341,7 +390,6 @@ function CreateCard({ icon, label, title, link, color, onClick }) {
         pointerEvents: "none",
       }} />
 
-      {/* Gradient overlay */}
       <div style={{
         position: "absolute",
         top: 0,
@@ -394,6 +442,10 @@ function CreateCard({ icon, label, title, link, color, onClick }) {
 }
 
 function ProgressCard({ consistency }) {
+  if (!consistency || consistency.length === 0) {
+    consistency = Array(14).fill({ worked_out: false });
+  }
+
   return (
     <div style={{
       position: "relative",
@@ -405,7 +457,6 @@ function ProgressCard({ consistency }) {
       marginBottom: 16,
       overflow: "hidden",
     }}>
-      {/* ✨ ANIMATED BORDER */}
       <div style={{
         position: "absolute",
         inset: 0,
@@ -468,7 +519,6 @@ function AIInsightCard({ insight }) {
       overflow: "hidden",
       marginBottom: 24,
     }}>
-      {/* ✨ ANIMATED TOP BORDER */}
       <div style={{
         position: "absolute",
         top: 0,
@@ -480,7 +530,6 @@ function AIInsightCard({ insight }) {
         animation: "shimmer 3s ease-in-out infinite",
       }} />
 
-      {/* ✨ FULL CARD BORDER */}
       <div style={{
         position: "absolute",
         inset: 0,
@@ -531,7 +580,7 @@ function AIInsightCard({ insight }) {
           fontWeight: 450,
           letterSpacing: 0.2,
         }}>
-          {insight || "Keep showing up. Momentum compounds."}
+          {insight}
         </p>
       </div>
 

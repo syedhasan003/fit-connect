@@ -16,6 +16,13 @@ import Diet from "./screens/Diet";
 import Login from "./screens/Login";
 import Register from "./screens/Register";
 
+// Vault sub-routes
+import HealthTimeline from "./screens/HealthTimeline";
+import CentralAnswersList from "./screens/CentralAnswers/CentralAnswersList";
+import CentralAnswerDetail from "./screens/CentralAnswers/CentralAnswerDetail";
+import ManualWorkoutsList from "./screens/ManualWorkouts/ManualWorkoutsList";
+import ManualWorkoutDetail from "./screens/ManualWorkouts/ManualWorkoutDetail";
+
 function AppRoutes() {
   const { isAuthenticated, initialized } = useAuth();
 
@@ -79,12 +86,59 @@ function AppRoutes() {
         }
       />
 
-      {/* ✅ VAULT ROUTE */}
+      {/* ✅ VAULT MAIN */}
       <Route
         path="/vault"
         element={
           <ProtectedRoute>
             <Vault />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* ✅ VAULT SUB-ROUTES */}
+      <Route
+        path="/vault/health-timeline"
+        element={
+          <ProtectedRoute>
+            <HealthTimeline />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/vault/central"
+        element={
+          <ProtectedRoute>
+            <CentralAnswersList />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/vault/central/:id"
+        element={
+          <ProtectedRoute>
+            <CentralAnswerDetail />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* ✅ NEW: MANUAL WORKOUTS ROUTES */}
+      <Route
+        path="/vault/workouts"
+        element={
+          <ProtectedRoute>
+            <ManualWorkoutsList />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/vault/workouts/:id"
+        element={
+          <ProtectedRoute>
+            <ManualWorkoutDetail />
           </ProtectedRoute>
         }
       />

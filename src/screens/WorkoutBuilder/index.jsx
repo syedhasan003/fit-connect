@@ -1,11 +1,22 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import EXERCISES from "./exercises.js";
-import { createVaultItem } from "../../api/vault";
+import { createVaultItem, updateVaultItem } from "../../api/vault";
 
 export default function WorkoutBuilder() {
   const navigate = useNavigate();
-  const [days, setDays] = useState([{ muscles: [] }]);
+  const location = useLocation();
+  
+  // Check if we're editing an existing workout
+  const editingWorkout = location.state?.workoutData;
+  const editingId = location.state?.workoutId;
+  
+  const [workoutName, setWorkoutName] = useState(
+    editingWorkout?.workoutName || ""
+  );
+  const [days, setDays] = useState(
+    editingWorkout?.days || [{ muscles: [] }]
+  );
   const [open, setOpen] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -194,31 +205,62 @@ export default function WorkoutBuilder() {
     );
 
   const handleSave = async () => {
+    // Validate workout name
+    if (!workoutName.trim()) {
+      alert("❌ Please enter a workout name");
+      return;
+    }
+
+    // Validate at least one exercise
+    const hasExercises = days.some(day =>
+      day.muscles.some(muscle =>
+        muscle.areas.some(area =>
+          area.exercises && area.exercises.length > 0
+        )
+      )
+    );
+
+    if (!hasExercises) {
+      alert("❌ Please add at least one exercise");
+      return;
+    }
+
     setSaving(true);
     try {
       const totalMuscles = days.reduce((acc, d) => acc + d.muscles.length, 0);
       const totalExercises = days.reduce((acc, day) => 
         acc + day.muscles.reduce((mAcc, muscle) =>
           mAcc + muscle.areas.reduce((aAcc, area) => 
-            aAcc + area.exercises.length, 0
+            aAcc + (area.exercises ? area.exercises.length : 0), 0
           ), 0
         ), 0
       );
 
-      await createVaultItem({
+      const workoutData = {
         type: "workout",
         category: "manual",
-        title: `${days.length}-Day Split Workout`,
-        summary: `${days.length} days · ${totalMuscles} muscle groups · ${totalExercises} exercises`,
+        title: workoutName.trim(),
+        summary: `${days.length} day${days.length > 1 ? 's' : ''} · ${totalMuscles} muscle group${totalMuscles > 1 ? 's' : ''} · ${totalExercises} exercise${totalExercises > 1 ? 's' : ''}`,
         content: {
+          workoutName: workoutName.trim(),
           days: days,
           created_at: new Date().toISOString(),
         },
         source: "manual",
         pinned: false,
-      });
+      };
 
-      alert("✅ Workout saved to Vault!");
+      if (editingId) {
+        // Update existing workout
+        await updateVaultItem(editingId, workoutData);
+        alert("✅ Workout updated successfully!");
+      } else {
+        // Create new workout
+        await createVaultItem(workoutData);
+        alert("✅ Workout saved to Vault!");
+      }
+      
+      navigate("/vault/workouts");
     } catch (error) {
       console.error("Failed to save workout:", error);
       alert(`❌ ${error.message || 'Failed to save workout. Please try again.'}`);
@@ -309,16 +351,57 @@ export default function WorkoutBuilder() {
               fontWeight: 600,
               letterSpacing: 0.3,
             }}>
-              Create Workout
+              {editingId ? "Edit Workout" : "Create Workout"}
             </h1>
             <p style={{
               margin: "4px 0 0",
               fontSize: 14,
               color: "rgba(255,255,255,0.5)",
             }}>
-              Build your perfect routine
+              {editingId ? "Update your routine" : "Build your perfect routine"}
             </p>
           </div>
+        </div>
+
+        {/* WORKOUT NAME INPUT */}
+        <div style={{ marginBottom: 24 }}>
+          <label style={{
+            display: "block",
+            fontSize: 14,
+            fontWeight: 600,
+            color: "rgba(255,255,255,0.7)",
+            marginBottom: 8,
+          }}>
+            Workout Name *
+          </label>
+          <input
+            type="text"
+            placeholder="e.g., PPL Program, Upper/Lower Split, Full Body..."
+            value={workoutName}
+            onChange={(e) => setWorkoutName(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "16px 20px",
+              borderRadius: 16,
+              border: "1px solid rgba(139, 92, 246, 0.3)",
+              background: "rgba(139, 92, 246, 0.05)",
+              color: "#fff",
+              fontSize: 16,
+              fontWeight: 500,
+              outline: "none",
+              transition: "all 0.3s ease",
+            }}
+            onFocus={(e) => {
+              e.target.style.borderColor = "rgba(139, 92, 246, 0.6)";
+              e.target.style.background = "rgba(139, 92, 246, 0.1)";
+              e.target.style.boxShadow = "0 0 0 3px rgba(139, 92, 246, 0.1)";
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = "rgba(139, 92, 246, 0.3)";
+              e.target.style.background = "rgba(139, 92, 246, 0.05)";
+              e.target.style.boxShadow = "none";
+            }}
+          />
         </div>
 
         {days.map((day, d) => (
@@ -416,10 +499,10 @@ export default function WorkoutBuilder() {
               borderRadius: "50%",
               animation: "spin 0.8s linear infinite",
             }} />
-            Saving...
+            {editingId ? "Updating..." : "Saving..."}
           </>
         ) : (
-          <>💾 Save to Vault</>
+          <>{editingId ? "💾 Update Workout" : "💾 Save to Vault"}</>
         )}
       </button>
 

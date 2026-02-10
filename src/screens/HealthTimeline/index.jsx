@@ -1,17 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "../../components/navigation/BottomNav";
-
-const API_BASE = 'http://localhost:8000';
-
-async function fetchHealthTimeline() {
-  const token = localStorage.getItem('token');
-  const response = await fetch(`${API_BASE}/vault/health-timeline`, {
-    headers: { 'Authorization': `Bearer ${token}` },
-  });
-  if (!response.ok) throw new Error('Failed to fetch timeline');
-  return response.json();
-}
+import { fetchHealthTimeline } from "../../api/vault";
 
 export default function HealthTimeline() {
   const navigate = useNavigate();
@@ -25,7 +15,8 @@ export default function HealthTimeline() {
   const loadTimeline = async () => {
     try {
       const data = await fetchHealthTimeline();
-      setTimeline(data.items || []);
+      // ✅ FIXED: Handle both array and object responses
+      setTimeline(Array.isArray(data) ? data : (data.items || []));
     } catch (error) {
       console.error("Failed to load timeline:", error);
     } finally {

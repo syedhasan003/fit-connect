@@ -1,8 +1,5 @@
-// frontend/src/api/vault.js
-
 const API_BASE = 'http://localhost:8000';
 
-// Helper to get token
 function getAuthHeaders() {
   const token = localStorage.getItem('token');
   if (!token) {
@@ -14,135 +11,154 @@ function getAuthHeaders() {
   };
 }
 
+// ✅ GET ALL VAULT ITEMS
 export async function fetchVaultItems() {
   try {
     const response = await fetch(`${API_BASE}/vault/`, {
+      method: 'GET',
       headers: getAuthHeaders(),
     });
-    
+
     if (response.status === 401) {
       throw new Error('Authentication failed. Please log in again.');
     }
-    
+
     if (!response.ok) {
-      throw new Error(`Failed to fetch vault items: ${response.status}`);
+      throw new Error(`Failed to fetch vault items: ${response.statusText}`);
     }
-    
+
     return response.json();
   } catch (error) {
-    console.error('Vault fetch error:', error);
+    console.error('Vault API Error:', error);
     throw error;
   }
 }
 
-export async function fetchVaultItem(itemId) {
+// ✅ GET SINGLE VAULT ITEM BY ID
+export async function fetchVaultItemById(id) {
   try {
-    const response = await fetch(`${API_BASE}/vault/${itemId}`, {
+    const response = await fetch(`${API_BASE}/vault/${id}`, {
+      method: 'GET',
       headers: getAuthHeaders(),
     });
-    
+
     if (response.status === 401) {
       throw new Error('Authentication failed. Please log in again.');
     }
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch vault item: ${response.status}`);
+
+    if (response.status === 404) {
+      throw new Error('Item not found');
     }
-    
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch vault item: ${response.statusText}`);
+    }
+
     return response.json();
   } catch (error) {
-    console.error('Vault item fetch error:', error);
+    console.error('Vault API Error:', error);
     throw error;
   }
 }
 
-export async function createVaultItem(data) {
+// ✅ CREATE VAULT ITEM
+export async function createVaultItem(itemData) {
   try {
     const response = await fetch(`${API_BASE}/vault/`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify(data),
+      body: JSON.stringify(itemData),
     });
-    
+
     if (response.status === 401) {
       throw new Error('Authentication failed. Please log in again.');
     }
-    
+
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Vault create error response:', errorText);
-      throw new Error(`Failed to create vault item: ${response.status}`);
+      throw new Error(`Failed to create vault item: ${response.statusText}`);
     }
-    
+
     return response.json();
   } catch (error) {
-    console.error('Vault create error:', error);
+    console.error('Vault API Error:', error);
     throw error;
   }
 }
 
-export async function updateVaultItem(itemId, data) {
+// ✅ UPDATE VAULT ITEM
+export async function updateVaultItem(id, updates) {
   try {
-    const response = await fetch(`${API_BASE}/vault/${itemId}`, {
-      method: 'PUT',
+    const response = await fetch(`${API_BASE}/vault/${id}`, {
+      method: 'PATCH',
       headers: getAuthHeaders(),
-      body: JSON.stringify(data),
+      body: JSON.stringify(updates),
     });
-    
+
     if (response.status === 401) {
       throw new Error('Authentication failed. Please log in again.');
     }
-    
-    if (!response.ok) {
-      throw new Error(`Failed to update vault item: ${response.status}`);
+
+    if (response.status === 404) {
+      throw new Error('Item not found');
     }
-    
+
+    if (!response.ok) {
+      throw new Error(`Failed to update vault item: ${response.statusText}`);
+    }
+
     return response.json();
   } catch (error) {
-    console.error('Vault update error:', error);
+    console.error('Vault API Error:', error);
     throw error;
   }
 }
 
-export async function deleteVaultItem(itemId) {
+// ✅ DELETE VAULT ITEM
+export async function deleteVaultItem(id) {
   try {
-    const response = await fetch(`${API_BASE}/vault/${itemId}`, {
+    const response = await fetch(`${API_BASE}/vault/${id}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
-    
+
     if (response.status === 401) {
       throw new Error('Authentication failed. Please log in again.');
     }
-    
-    if (!response.ok) {
-      throw new Error(`Failed to delete vault item: ${response.status}`);
+
+    if (response.status === 404) {
+      throw new Error('Item not found');
     }
-    
+
+    if (!response.ok) {
+      throw new Error(`Failed to delete vault item: ${response.statusText}`);
+    }
+
     return response.json();
   } catch (error) {
-    console.error('Vault delete error:', error);
+    console.error('Vault API Error:', error);
     throw error;
   }
 }
 
+// ✅ GET HEALTH TIMELINE
 export async function fetchHealthTimeline() {
   try {
     const response = await fetch(`${API_BASE}/vault/health-timeline`, {
+      method: 'GET',
       headers: getAuthHeaders(),
     });
-    
+
     if (response.status === 401) {
       throw new Error('Authentication failed. Please log in again.');
     }
-    
+
     if (!response.ok) {
-      throw new Error(`Failed to fetch health timeline: ${response.status}`);
+      throw new Error(`Failed to fetch health timeline: ${response.statusText}`);
     }
-    
+
     return response.json();
   } catch (error) {
-    console.error('Health timeline fetch error:', error);
+    console.error('Vault API Error:', error);
     throw error;
   }
 }
