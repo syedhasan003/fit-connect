@@ -1,34 +1,49 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "../../components/navigation/BottomNav";
+import ProfileDropdown from "../../components/ProfileDropdown";
 import { fetchHomeOverview } from "../../api/home";
+import { fetchReminders } from "../../api/reminders";
 import { useAuth } from "../../auth/AuthContext";
 
 export default function Home() {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const [data, setData] = useState(null);
+  const [reminderCount, setReminderCount] = useState(0);
   const [error, setError] = useState(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   useEffect(() => {
-    fetchHomeOverview()
-      .then((response) => {
-        console.log('✅ Home data received:', response);
-        setData(response);
-      })
-      .catch((err) => {
-        console.error('❌ Home fetch error:', err);
-        
-        // ✅ If 401 (auth failed), force logout and redirect to login
-        if (err.message.includes('Authentication failed') || err.message.includes('401')) {
-          console.log('🚪 Auth failed - logging out...');
-          logout();
-          navigate('/login', { replace: true });
-        } else {
-          setError(err.message);
-        }
-      });
-  }, [logout, navigate]);
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const homeData = await fetchHomeOverview();
+      console.log('✅ Home data received:', homeData);
+      setData(homeData);
+
+      // Load reminder count
+      try {
+        const reminderData = await fetchReminders();
+        setReminderCount(reminderData.length);
+      } catch (reminderError) {
+        console.warn('⚠️ Failed to load reminders:', reminderError);
+      }
+
+    } catch (err) {
+      console.error('❌ Home fetch error:', err);
+
+      if (err.message.includes('Authentication failed') || err.message.includes('401')) {
+        console.log('🚪 Auth failed - logging out...');
+        logout();
+        navigate('/login', { replace: true });
+      } else {
+        setError(err.message);
+      }
+    }
+  };
 
   if (error) {
     return (
@@ -69,7 +84,6 @@ export default function Home() {
 
   if (!data) return <LoadingState />;
 
-  // ✅ SAFE DATA ACCESS with fallbacks
   const user = data.user || {};
   const name = user.full_name || user.email?.split("@")[0] || "User";
   const today = data.today || { workout: "pending", reminders: { missed: 0 } };
@@ -86,61 +100,95 @@ export default function Home() {
       {/* HEADER */}
       <header style={{
         padding: "24px 20px 20px",
-        display: "flex",
-        alignItems: "center",
-        gap: "16px",
+        position: "relative",
       }}>
-        <div style={{
-          width: 52,
-          height: 52,
-          borderRadius: "50%",
-          background: "linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(99, 102, 241, 0.3))",
-          border: "2px solid rgba(139, 92, 246, 0.4)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 20,
-          fontWeight: 600,
-          boxShadow: "0 8px 24px rgba(139, 92, 246, 0.2)",
-          position: "relative",
-        }}>
+        <div
+          onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "16px",
+            cursor: "pointer",
+            position: "relative",
+            width: "fit-content",
+          }}
+        >
           <div style={{
-            position: "absolute",
-            inset: -4,
+            width: 52,
+            height: 52,
             borderRadius: "50%",
-            background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
-            opacity: 0.3,
-            filter: "blur(8px)",
-            animation: "pulse 3s ease-in-out infinite",
-          }} />
-          <span style={{ position: "relative", zIndex: 1 }}>
-            {name.charAt(0).toUpperCase()}
-          </span>
-        </div>
-        <div>
-          <h1 style={{
-            margin: 0,
+            background: "linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(99, 102, 241, 0.3))",
+            border: "2px solid rgba(139, 92, 246, 0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
             fontSize: 20,
             fontWeight: 600,
-            letterSpacing: 0.3,
+            boxShadow: "0 8px 24px rgba(139, 92, 246, 0.2)",
+            position: "relative",
+            transition: "all 0.2s ease",
+            transform: isDropdownOpen ? "scale(1.05)" : "scale(1)",
           }}>
-            {name}
-          </h1>
-          <p style={{
-            margin: "2px 0 0",
-            fontSize: 14,
-            color: "rgba(255,255,255,0.5)",
-            fontWeight: 450,
-          }}>
-            Dashboard overview
-          </p>
+            <div style={{
+              position: "absolute",
+              inset: -4,
+              borderRadius: "50%",
+              background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
+              opacity: 0.3,
+              filter: "blur(8px)",
+              animation: "pulse 3s ease-in-out infinite",
+            }} />
+            <span style={{ position: "relative", zIndex: 1 }}>
+              {name.charAt(0).toUpperCase()}
+            </span>
+          </div>
+          <div>
+            <h1 style={{
+              margin: 0,
+              fontSize: 20,
+              fontWeight: 600,
+              letterSpacing: 0.3,
+            }}>
+              {name}
+            </h1>
+            <p style={{
+              margin: "2px 0 0",
+              fontSize: 14,
+              color: "rgba(255,255,255,0.5)",
+              fontWeight: 450,
+            }}>
+              Dashboard overview
+            </p>
+          </div>
         </div>
+
+        {/* Profile Dropdown */}
+        <ProfileDropdown
+          userName={name}
+          isOpen={isDropdownOpen}
+          onClose={() => setIsDropdownOpen(false)}
+        />
       </header>
 
       <div style={{ padding: "0 20px" }}>
-        {/* TODAY SECTION */}
+        {/* TODAY SECTION - NOW INTERACTIVE */}
         <SectionHeader title="Today" />
-        <TodayCard data={today} />
+        <TodayCard
+          data={today}
+          navigate={navigate}
+          user={user}
+        />
+
+        {/* REMINDERS SUMMARY */}
+        {reminderCount > 0 && (
+          <>
+            <SectionHeader title="Reminders" />
+            <ReminderSummaryCard
+              count={reminderCount}
+              onClick={() => navigate("/reminders")}
+            />
+          </>
+        )}
 
         {/* CREATE SECTION */}
         <SectionHeader title="Create" />
@@ -192,7 +240,7 @@ export default function Home() {
             transform: scale(1.05);
           }
         }
-        
+
         @keyframes borderGlow {
           0%, 100% {
             opacity: 0.5;
@@ -201,12 +249,70 @@ export default function Home() {
             opacity: 1;
           }
         }
-        
+
         @keyframes rotate {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
+
+        @keyframes shimmer {
+          0%, 100% {
+            transform: translateX(-50%);
+            opacity: 0.4;
+          }
+          50% {
+            transform: translateX(50%);
+            opacity: 1;
+          }
+        }
       `}</style>
+    </div>
+  );
+}
+
+function ReminderSummaryCard({ count, onClick }) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        borderRadius: 18,
+        padding: "20px",
+        background: "linear-gradient(135deg, rgba(17, 24, 39, 0.5), rgba(31, 41, 55, 0.3))",
+        backdropFilter: "blur(12px)",
+        border: "1px solid rgba(139, 92, 246, 0.2)",
+        marginBottom: 16,
+        cursor: "pointer",
+        transition: "all 0.2s ease",
+      }}
+    >
+      <div style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+      }}>
+        <div>
+          <h3 style={{
+            margin: "0 0 6px",
+            fontSize: 17,
+            fontWeight: 600,
+          }}>
+            You have {count} active reminder{count !== 1 ? 's' : ''}
+          </h3>
+          <p style={{
+            margin: 0,
+            fontSize: 14,
+            color: "rgba(255,255,255,0.6)",
+          }}>
+            Tap to view all
+          </p>
+        </div>
+        <div style={{
+          fontSize: 24,
+          color: "#8b5cf6",
+        }}>
+          →
+        </div>
+      </div>
     </div>
   );
 }
@@ -261,22 +367,46 @@ function SectionHeader({ title }) {
   );
 }
 
-function TodayCard({ data }) {
+function TodayCard({ data, navigate, user }) {
+  const [hoveredIndex, setHoveredIndex] = useState(null);
+
+  // Define items with click handlers
   const items = [
     {
       label: "Workout",
       value: data.workout === "completed" ? "Completed" : "Pending",
       status: data.workout === "completed" ? "success" : "pending",
+      onClick: () => {
+        // Check if user has active workout program
+        if (user.active_workout_program_id) {
+          // Go to workout tracking/session page
+          navigate('/workouts/start');
+        } else {
+          // Go to workout builder for first-time setup
+          navigate('/workout-builder');
+        }
+      },
     },
     {
       label: "Diet",
       value: "Coming soon",
       status: "muted",
+      onClick: () => {
+        // Check if user has active diet plan
+        if (user.active_diet_plan_id) {
+          // Go to meal logging page
+          navigate('/meals/log');
+        } else {
+          // Go to diet builder for first-time setup
+          navigate('/diet-builder');
+        }
+      },
     },
     {
       label: "Reminders",
       value: `${data.reminders?.missed || 0} missed`,
       status: (data.reminders?.missed || 0) > 0 ? "warning" : "muted",
+      onClick: () => navigate('/reminders'),
     },
   ];
 
@@ -310,17 +440,27 @@ function TodayCard({ data }) {
         animation: "rotate 8s linear infinite",
         pointerEvents: "none",
       }} />
-      
+
       <div style={{ position: "relative", zIndex: 1 }}>
         {items.map((item, i) => (
           <div
             key={i}
+            onClick={item.onClick}
+            onMouseEnter={() => setHoveredIndex(i)}
+            onMouseLeave={() => setHoveredIndex(null)}
             style={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              padding: "12px 0",
+              padding: "12px 8px",
               borderBottom: i < items.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none",
+              cursor: "pointer",
+              background: hoveredIndex === i
+                ? "rgba(139, 92, 246, 0.1)"
+                : "transparent",
+              borderRadius: 8,
+              transition: "all 0.2s ease",
+              transform: hoveredIndex === i ? "translateX(4px)" : "translateX(0)",
             }}
           >
             <span style={{
@@ -330,19 +470,34 @@ function TodayCard({ data }) {
             }}>
               {item.label}
             </span>
-            <span style={{
-              fontSize: 14,
-              fontWeight: 500,
-              color: item.status === "success"
-                ? "#10b981"
-                : item.status === "warning"
-                ? "#f59e0b"
-                : item.status === "pending"
-                ? "#8b5cf6"
-                : "rgba(255,255,255,0.5)",
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
             }}>
-              {item.value}
-            </span>
+              <span style={{
+                fontSize: 14,
+                fontWeight: 500,
+                color: item.status === "success"
+                  ? "#10b981"
+                  : item.status === "warning"
+                  ? "#f59e0b"
+                  : item.status === "pending"
+                  ? "#8b5cf6"
+                  : "rgba(255,255,255,0.5)",
+              }}>
+                {item.value}
+              </span>
+              {hoveredIndex === i && (
+                <span style={{
+                  fontSize: 16,
+                  color: "#8b5cf6",
+                  transition: "all 0.2s ease",
+                }}>
+                  →
+                </span>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -583,19 +738,6 @@ function AIInsightCard({ insight }) {
           {insight}
         </p>
       </div>
-
-      <style>{`
-        @keyframes shimmer {
-          0%, 100% {
-            transform: translateX(-50%);
-            opacity: 0.4;
-          }
-          50% {
-            transform: translateX(50%);
-            opacity: 1;
-          }
-        }
-      `}</style>
     </div>
   );
 }

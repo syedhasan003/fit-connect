@@ -2,26 +2,57 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import EXERCISES from "./exercises.js";
 import { createVaultItem, updateVaultItem } from "../../api/vault";
+import { setActiveWorkoutProgram } from "../../api/user";
 
 export default function WorkoutBuilder() {
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   // Check if we're editing an existing workout
   const editingWorkout = location.state?.workoutData;
   const editingId = location.state?.workoutId;
-  
+
+  // NEW: Day selection state
+  const [selectedDayCount, setSelectedDayCount] = useState(
+    editingWorkout ? editingWorkout.days.length : null
+  );
+  const [showDaySelector, setShowDaySelector] = useState(
+    !editingWorkout && !selectedDayCount
+  );
+
   const [workoutName, setWorkoutName] = useState(
     editingWorkout?.workoutName || ""
   );
   const [days, setDays] = useState(
-    editingWorkout?.days || [{ muscles: [] }]
+    editingWorkout?.days || []
   );
   const [open, setOpen] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [settingActive, setSettingActive] = useState(false);
+  const [savedWorkoutId, setSavedWorkoutId] = useState(editingId || null);
 
-  const addDay = () => setDays(prev => [...prev, { muscles: [] }]);
-  const removeDay = d => setDays(prev => prev.filter((_, i) => i !== d));
+  // Initialize days when day count is selected
+  useEffect(() => {
+    if (selectedDayCount && days.length === 0 && !editingWorkout) {
+      const initialDays = Array.from({ length: selectedDayCount }, () => ({ muscles: [] }));
+      setDays(initialDays);
+    }
+  }, [selectedDayCount, days.length, editingWorkout]);
+
+  const handleDayCountSelect = (count) => {
+    setSelectedDayCount(count);
+    const initialDays = Array.from({ length: count }, () => ({ muscles: [] }));
+    setDays(initialDays);
+    setShowDaySelector(false);
+  };
+
+  const removeDay = d => {
+    // Only allow removing if we're editing and want to allow flexibility
+    // For new workouts, days are locked to selected count
+    if (editingWorkout) {
+      setDays(prev => prev.filter((_, i) => i !== d));
+    }
+  };
 
   const addMuscle = (d, name) => {
     setDays(prev =>
@@ -46,7 +77,7 @@ export default function WorkoutBuilder() {
           ? {
               ...day,
               muscles: day.muscles.map((mu, mi) =>
-                mi === m ? { ...mu, areas: [...mu.areas, { name, exercises: [] }] } : mu
+                mi === m ? { ...mu, areas: [...mu.areas, { name, areas: [] }] } : mu
               )
             }
           : day
@@ -83,7 +114,7 @@ export default function WorkoutBuilder() {
                         ai === a
                           ? {
                               ...ar,
-                              exercises: [...ar.exercises, { name, sets: [{ reps: "", weight: "", rir: "" }] }]
+                              exercises: [...(ar.exercises || []), { name, sets: [{ reps: "", weight: "", rir: "" }] }]
                             }
                           : ar
                       )
@@ -228,9 +259,9 @@ export default function WorkoutBuilder() {
     setSaving(true);
     try {
       const totalMuscles = days.reduce((acc, d) => acc + d.muscles.length, 0);
-      const totalExercises = days.reduce((acc, day) => 
+      const totalExercises = days.reduce((acc, day) =>
         acc + day.muscles.reduce((mAcc, muscle) =>
-          mAcc + muscle.areas.reduce((aAcc, area) => 
+          mAcc + muscle.areas.reduce((aAcc, area) =>
             aAcc + (area.exercises ? area.exercises.length : 0), 0
           ), 0
         ), 0
@@ -250,29 +281,87 @@ export default function WorkoutBuilder() {
         pinned: false,
       };
 
-      if (editingId) {
+      let workoutId;
+      if (editingId || savedWorkoutId) {
         // Update existing workout
-        await updateVaultItem(editingId, workoutData);
+        workoutId = editingId || savedWorkoutId;
+        await updateVaultItem(workoutId, workoutData);
         alert("✅ Workout updated successfully!");
       } else {
         // Create new workout
-        await createVaultItem(workoutData);
+        const response = await createVaultItem(workoutData);
+        workoutId = response.id;
+        setSavedWorkoutId(workoutId);
         alert("✅ Workout saved to Vault!");
       }
-      
-      navigate("/vault/workouts");
+
+      return workoutId;
     } catch (error) {
       console.error("Failed to save workout:", error);
       alert(`❌ ${error.message || 'Failed to save workout. Please try again.'}`);
+      return null;
     } finally {
       setSaving(false);
     }
   };
 
+  const handleSetAsActive = async () => {
+    setSettingActive(true);
+    try {
+      // First, ensure workout is saved
+      let workoutId = savedWorkoutId || editingId;
+
+      if (!workoutId) {
+        workoutId = await handleSave();
+        if (!workoutId) {
+          setSettingActive(false);
+          return;
+        }
+      }
+
+      // Now set as active program
+      await setActiveWorkoutProgram(workoutId);
+      alert("✅ Set as active workout program! You'll see your progress on the home screen.");
+      navigate("/");
+    } catch (error) {
+      console.error("Failed to set active program:", error);
+      alert(`❌ ${error.message || 'Failed to set as active program. Please try again.'}`);
+    } finally {
+      setSettingActive(false);
+    }
+  };
+
+  const getSelectorItems = () => {
+    if (!open) return [];
+    const parts = open.split('-');
+
+    if (open.startsWith('muscle-')) {
+      return Object.keys(EXERCISES);
+    }
+
+    if (open.startsWith('area-')) {
+      const dayIndex = parseInt(parts[1]);
+      const muscleIndex = parseInt(parts[2]);
+      const muscleName = days[dayIndex].muscles[muscleIndex].name;
+      return Object.keys(EXERCISES[muscleName]);
+    }
+
+    if (open.startsWith('ex-')) {
+      const dayIndex = parseInt(parts[1]);
+      const muscleIndex = parseInt(parts[2]);
+      const areaIndex = parseInt(parts[3]);
+      const muscle = days[dayIndex].muscles[muscleIndex];
+      const areaName = muscle.areas[areaIndex].name;
+      return EXERCISES[muscle.name][areaName];
+    }
+
+    return [];
+  };
+
   const handleSelectorSelect = (item) => {
     if (!open) return;
     const parts = open.split('-');
-    
+
     if (open.startsWith('muscle-')) {
       const dayIndex = parseInt(parts[1]);
       addMuscle(dayIndex, item);
@@ -288,32 +377,10 @@ export default function WorkoutBuilder() {
     }
   };
 
-  const getSelectorItems = () => {
-    if (!open) return [];
-    const parts = open.split('-');
-    
-    if (open.startsWith('muscle-')) {
-      return Object.keys(EXERCISES);
-    }
-    
-    if (open.startsWith('area-')) {
-      const dayIndex = parseInt(parts[1]);
-      const muscleIndex = parseInt(parts[2]);
-      const muscleName = days[dayIndex].muscles[muscleIndex].name;
-      return Object.keys(EXERCISES[muscleName]);
-    }
-    
-    if (open.startsWith('ex-')) {
-      const dayIndex = parseInt(parts[1]);
-      const muscleIndex = parseInt(parts[2]);
-      const areaIndex = parseInt(parts[3]);
-      const muscle = days[dayIndex].muscles[muscleIndex];
-      const areaName = muscle.areas[areaIndex].name;
-      return EXERCISES[muscle.name][areaName];
-    }
-    
-    return [];
-  };
+  // Show day selector for first-time users
+  if (showDaySelector) {
+    return <DaySelector onSelect={handleDayCountSelect} onBack={() => navigate(-1)} />;
+  }
 
   return (
     <div style={{
@@ -358,7 +425,7 @@ export default function WorkoutBuilder() {
               fontSize: 14,
               color: "rgba(255,255,255,0.5)",
             }}>
-              {editingId ? "Update your routine" : "Build your perfect routine"}
+              {editingId ? "Update your routine" : `${selectedDayCount}-day workout program`}
             </p>
           </div>
         </div>
@@ -422,95 +489,151 @@ export default function WorkoutBuilder() {
             onAddSet={(m, a, e) => addSet(d, m, a, e)}
             onUpdateSet={(m, a, e, s, key, value) => updateSet(d, m, a, e, s, key, value)}
             onRemoveSet={(m, a, e, s) => removeSet(d, m, a, e, s)}
+            isLocked={!editingWorkout}
           />
         ))}
 
+        {/* INFO: Days are locked for new workouts */}
+        {!editingWorkout && (
+          <div style={{
+            padding: "16px 20px",
+            borderRadius: 16,
+            background: "rgba(139, 92, 246, 0.1)",
+            border: "1px solid rgba(139, 92, 246, 0.3)",
+            marginTop: 16,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+          }}>
+            <span style={{ fontSize: 20 }}>🔒</span>
+            <div>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "#a78bfa" }}>
+                {selectedDayCount}-Day Program
+              </p>
+              <p style={{ margin: "4px 0 0", fontSize: 13, color: "rgba(255,255,255,0.6)" }}>
+                Complete all {selectedDayCount} days to create your workout
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* FLOATING ACTION BUTTONS */}
+      <div style={{
+        position: "fixed",
+        bottom: 24,
+        right: 24,
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        zIndex: 50,
+      }}>
+        {/* SET AS ACTIVE BUTTON */}
         <button
-          onClick={addDay}
+          onClick={handleSetAsActive}
+          disabled={settingActive}
           style={{
-            width: "100%",
-            padding: "16px",
-            borderRadius: 18,
+            padding: "16px 32px",
+            borderRadius: 999,
             border: "none",
-            background: "linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(99, 102, 241, 0.15))",
-            color: "#a78bfa",
+            background: settingActive
+              ? "rgba(16, 185, 129, 0.5)"
+              : "linear-gradient(135deg, #10b981, #059669)",
+            color: "#fff",
             fontSize: 15,
             fontWeight: 600,
-            cursor: "pointer",
+            cursor: settingActive ? "not-allowed" : "pointer",
+            boxShadow: "0 8px 32px rgba(16, 185, 129, 0.4)",
             transition: "all 0.3s ease",
-            backdropFilter: "blur(12px)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            opacity: settingActive ? 0.7 : 1,
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = "linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(99, 102, 241, 0.25))";
-            e.currentTarget.style.transform = "translateY(-2px)";
+            if (!settingActive) {
+              e.currentTarget.style.transform = "scale(1.05)";
+              e.currentTarget.style.boxShadow = "0 12px 40px rgba(16, 185, 129, 0.6)";
+            }
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = "linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(99, 102, 241, 0.15))";
-            e.currentTarget.style.transform = "translateY(0)";
+            e.currentTarget.style.transform = "scale(1)";
+            e.currentTarget.style.boxShadow = "0 8px 32px rgba(16, 185, 129, 0.4)";
           }}
         >
-          + Add Day
+          {settingActive ? (
+            <>
+              <div style={{
+                width: 16,
+                height: 16,
+                border: "2px solid rgba(255,255,255,0.3)",
+                borderTop: "2px solid #fff",
+                borderRadius: "50%",
+                animation: "spin 0.8s linear infinite",
+              }} />
+              Setting Active...
+            </>
+          ) : (
+            <>⚡ Set as Active Program</>
+          )}
+        </button>
+
+        {/* SAVE BUTTON */}
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            padding: "16px 32px",
+            borderRadius: 999,
+            border: "none",
+            background: saving
+              ? "rgba(139, 92, 246, 0.5)"
+              : "linear-gradient(135deg, #8b5cf6, #6366f1)",
+            color: "#fff",
+            fontSize: 15,
+            fontWeight: 600,
+            cursor: saving ? "not-allowed" : "pointer",
+            boxShadow: "0 8px 32px rgba(139, 92, 246, 0.4)",
+            transition: "all 0.3s ease",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            opacity: saving ? 0.7 : 1,
+          }}
+          onMouseEnter={(e) => {
+            if (!saving) {
+              e.currentTarget.style.transform = "scale(1.05)";
+              e.currentTarget.style.boxShadow = "0 12px 40px rgba(139, 92, 246, 0.6)";
+            }
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "scale(1)";
+            e.currentTarget.style.boxShadow = "0 8px 32px rgba(139, 92, 246, 0.4)";
+          }}
+        >
+          {saving ? (
+            <>
+              <div style={{
+                width: 16,
+                height: 16,
+                border: "2px solid rgba(255,255,255,0.3)",
+                borderTop: "2px solid #fff",
+                borderRadius: "50%",
+                animation: "spin 0.8s linear infinite",
+              }} />
+              {editingId ? "Updating..." : "Saving..."}
+            </>
+          ) : (
+            <>{editingId ? "💾 Update Workout" : "💾 Save to Vault"}</>
+          )}
         </button>
       </div>
 
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        style={{
-          position: "fixed",
-          bottom: 24,
-          right: 24,
-          padding: "16px 32px",
-          borderRadius: 999,
-          border: "none",
-          background: saving 
-            ? "rgba(139, 92, 246, 0.5)" 
-            : "linear-gradient(135deg, #8b5cf6, #6366f1)",
-          color: "#fff",
-          fontSize: 15,
-          fontWeight: 600,
-          cursor: saving ? "not-allowed" : "pointer",
-          boxShadow: "0 8px 32px rgba(139, 92, 246, 0.4)",
-          transition: "all 0.3s ease",
-          zIndex: 50,
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          opacity: saving ? 0.7 : 1,
-        }}
-        onMouseEnter={(e) => {
-          if (!saving) {
-            e.currentTarget.style.transform = "scale(1.05)";
-            e.currentTarget.style.boxShadow = "0 12px 40px rgba(139, 92, 246, 0.6)";
-          }
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = "scale(1)";
-          e.currentTarget.style.boxShadow = "0 8px 32px rgba(139, 92, 246, 0.4)";
-        }}
-      >
-        {saving ? (
-          <>
-            <div style={{
-              width: 16,
-              height: 16,
-              border: "2px solid rgba(255,255,255,0.3)",
-              borderTop: "2px solid #fff",
-              borderRadius: "50%",
-              animation: "spin 0.8s linear infinite",
-            }} />
-            {editingId ? "Updating..." : "Saving..."}
-          </>
-        ) : (
-          <>{editingId ? "💾 Update Workout" : "💾 Save to Vault"}</>
-        )}
-      </button>
-
       {open && (
-        <Selector 
-          items={getSelectorItems()} 
-          onSelect={handleSelectorSelect} 
-          onClose={() => setOpen(null)} 
+        <Selector
+          items={getSelectorItems()}
+          onSelect={handleSelectorSelect}
+          onClose={() => setOpen(null)}
         />
       )}
 
@@ -527,7 +650,158 @@ export default function WorkoutBuilder() {
   );
 }
 
-function DayCard({ day, dayIndex, daysLength, open, setOpen, onRemoveDay, onAddMuscle, onRemoveMuscle, onAddArea, onRemoveArea, onAddExercise, onRemoveExercise, onAddSet, onUpdateSet, onRemoveSet }) {
+// NEW: Day Selection Screen
+function DaySelector({ onSelect, onBack }) {
+  const [hoveredDay, setHoveredDay] = useState(null);
+
+  const dayOptions = [
+    { count: 3, label: "3 Days", description: "Full body focus", color: "#10b981" },
+    { count: 4, label: "4 Days", description: "Upper/Lower split", color: "#3b82f6" },
+    { count: 5, label: "5 Days", description: "Push/Pull/Legs", color: "#8b5cf6" },
+    { count: 6, label: "6 Days", description: "Advanced split", color: "#ec4899" },
+    { count: 7, label: "7 Days", description: "Daily training", color: "#f59e0b" },
+  ];
+
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: "#000",
+      color: "#fff",
+      padding: "24px 20px",
+      display: "flex",
+      flexDirection: "column",
+    }}>
+      <button
+        onClick={onBack}
+        style={{
+          background: "transparent",
+          border: "none",
+          color: "#8b5cf6",
+          fontSize: 28,
+          cursor: "pointer",
+          padding: 0,
+          marginBottom: 24,
+          alignSelf: "flex-start",
+        }}
+      >
+        ←
+      </button>
+
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", maxWidth: 480, margin: "0 auto", width: "100%" }}>
+        <div style={{ textAlign: "center", marginBottom: 48 }}>
+          <div style={{ fontSize: 64, marginBottom: 16 }}>🏋️</div>
+          <h1 style={{
+            margin: "0 0 12px",
+            fontSize: 28,
+            fontWeight: 700,
+            background: "linear-gradient(135deg, #a78bfa, #818cf8)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            backgroundClip: "text",
+          }}>
+            How many days per week?
+          </h1>
+          <p style={{
+            margin: 0,
+            fontSize: 16,
+            color: "rgba(255,255,255,0.6)",
+            lineHeight: 1.5,
+          }}>
+            Choose your training frequency to build<br />your personalized workout program
+          </p>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {dayOptions.map((option) => (
+            <button
+              key={option.count}
+              onClick={() => onSelect(option.count)}
+              onMouseEnter={() => setHoveredDay(option.count)}
+              onMouseLeave={() => setHoveredDay(null)}
+              style={{
+                position: "relative",
+                padding: "24px 28px",
+                borderRadius: 20,
+                border: `2px solid ${hoveredDay === option.count ? option.color : 'rgba(255,255,255,0.1)'}`,
+                background: hoveredDay === option.count
+                  ? `linear-gradient(135deg, ${option.color}15, ${option.color}08)`
+                  : "rgba(17, 24, 39, 0.5)",
+                cursor: "pointer",
+                transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+                transform: hoveredDay === option.count ? "translateY(-4px) scale(1.02)" : "translateY(0) scale(1)",
+                boxShadow: hoveredDay === option.count
+                  ? `0 12px 32px ${option.color}40`
+                  : "none",
+                textAlign: "left",
+                overflow: "hidden",
+              }}
+            >
+              <div style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                height: "100%",
+                background: `linear-gradient(135deg, ${option.color}10, transparent)`,
+                opacity: hoveredDay === option.count ? 1 : 0,
+                transition: "opacity 0.3s ease",
+              }} />
+
+              <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <h3 style={{
+                    margin: "0 0 6px",
+                    fontSize: 22,
+                    fontWeight: 700,
+                    color: hoveredDay === option.count ? option.color : "#fff",
+                    transition: "color 0.3s ease",
+                  }}>
+                    {option.label}
+                  </h3>
+                  <p style={{
+                    margin: 0,
+                    fontSize: 14,
+                    color: "rgba(255,255,255,0.6)",
+                  }}>
+                    {option.description}
+                  </p>
+                </div>
+                <div style={{
+                  fontSize: 24,
+                  color: option.color,
+                  transform: hoveredDay === option.count ? "translateX(4px)" : "translateX(0)",
+                  transition: "transform 0.3s ease",
+                }}>
+                  →
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        <div style={{
+          marginTop: 32,
+          padding: "20px",
+          borderRadius: 16,
+          background: "rgba(139, 92, 246, 0.08)",
+          border: "1px solid rgba(139, 92, 246, 0.2)",
+        }}>
+          <p style={{
+            margin: 0,
+            fontSize: 13,
+            color: "rgba(255,255,255,0.7)",
+            lineHeight: 1.6,
+            textAlign: "center",
+          }}>
+            💡 <strong style={{ color: "#a78bfa" }}>Tip:</strong> Most people see great results with 4-5 days per week. You can always adjust later!
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DayCard({ day, dayIndex, daysLength, open, setOpen, onRemoveDay, onAddMuscle, onRemoveMuscle, onAddArea, onRemoveArea, onAddExercise, onRemoveExercise, onAddSet, onUpdateSet, onRemoveSet, isLocked }) {
   return (
     <div style={{
       position: "relative",
@@ -578,7 +852,8 @@ function DayCard({ day, dayIndex, daysLength, open, setOpen, onRemoveDay, onAddM
               {day.muscles.length} muscle group{day.muscles.length !== 1 ? 's' : ''}
             </p>
           </div>
-          {daysLength > 1 && (
+          {/* Only show remove button if not locked and more than 1 day */}
+          {!isLocked && daysLength > 1 && (
             <button onClick={onRemoveDay} style={{
               width: 32,
               height: 32,
@@ -692,7 +967,7 @@ function AreaBlock({ area, dayIndex, muscleIndex, areaIndex, muscleName, open, s
 
       <SmallButton onClick={() => setOpen(`ex-${dayIndex}-${muscleIndex}-${areaIndex}`)} text="+ Add Exercise" color="#ec4899" />
 
-      {area.exercises.map((ex, e) => (
+      {area.exercises && area.exercises.map((ex, e) => (
         <ExerciseCard
           key={e}
           exercise={ex}
@@ -716,7 +991,6 @@ function ExerciseCard({ exercise, onRemove, onAddSet, onUpdateSet, onRemoveSet }
       background: "rgba(0, 0, 0, 0.5)",
       overflow: "hidden",
     }}>
-      {/* ✨ ANIMATED BORDER - PINK/PURPLE GRADIENT */}
       <div style={{
         position: "absolute",
         inset: 0,
@@ -839,7 +1113,7 @@ function Selector({ items, onSelect, onClose }) {
   }, []);
 
   return (
-    <div 
+    <div
       style={{
         position: "fixed",
         inset: 0,
@@ -848,7 +1122,7 @@ function Selector({ items, onSelect, onClose }) {
         flexDirection: "column",
       }}
     >
-      <div 
+      <div
         onClick={onClose}
         style={{
           position: "absolute",
@@ -858,7 +1132,7 @@ function Selector({ items, onSelect, onClose }) {
         }}
       />
 
-      <div 
+      <div
         style={{
           position: "relative",
           marginTop: "auto",
@@ -895,7 +1169,7 @@ function Selector({ items, onSelect, onClose }) {
           Select Option
         </h3>
 
-        <div 
+        <div
           ref={contentRef}
           style={{
             flex: 1,

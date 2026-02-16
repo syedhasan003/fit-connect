@@ -23,6 +23,11 @@ import CentralAnswerDetail from "./screens/CentralAnswers/CentralAnswerDetail";
 import ManualWorkoutsList from "./screens/ManualWorkouts/ManualWorkoutsList";
 import ManualWorkoutDetail from "./screens/ManualWorkouts/ManualWorkoutDetail";
 
+// ✅ REMINDERS ROUTES
+import Reminders from "./screens/Reminders";
+import CreateReminder from "./screens/Reminders/CreateReminder";
+import EditReminder from "./screens/Reminders/EditReminder";
+
 function AppRoutes() {
   const { isAuthenticated, initialized } = useAuth();
 
@@ -124,7 +129,7 @@ function AppRoutes() {
         }
       />
 
-      {/* ✅ NEW: MANUAL WORKOUTS ROUTES */}
+      {/* ✅ MANUAL WORKOUTS ROUTES */}
       <Route
         path="/vault/workouts"
         element={
@@ -139,6 +144,34 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <ManualWorkoutDetail />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* ✅ REMINDERS ROUTES */}
+      <Route
+        path="/reminders"
+        element={
+          <ProtectedRoute>
+            <Reminders />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/reminders/create"
+        element={
+          <ProtectedRoute>
+            <CreateReminder />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/reminders/edit/:id"
+        element={
+          <ProtectedRoute>
+            <EditReminder />
           </ProtectedRoute>
         }
       />
