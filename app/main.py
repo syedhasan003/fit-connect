@@ -43,6 +43,8 @@ from app.routers import progress as progress_router
 from app.routers import health_profile as health_profile_router
 from app.routers import health_memory
 from app.routers import reminders
+from app.routers import workout_endpoints
+from app.routers import diet_endpoints
 
 # -------------------------------------------------
 # Home
@@ -141,6 +143,8 @@ app.include_router(progress_router.router)
 app.include_router(health_profile_router.router)
 app.include_router(health_memory.router)
 app.include_router(reminders.router)
+app.include_router(workout_endpoints.router)
+app.include_router(diet_endpoints.router)
 
 # Home
 app.include_router(home_router.router)

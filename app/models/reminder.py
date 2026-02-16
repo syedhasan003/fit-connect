@@ -12,11 +12,14 @@ class Reminder(Base):
     # medication, meal, workout, checkup
 
     message = Column(String, nullable=False)
-    scheduled_at = Column(DateTime(timezone=True), nullable=False)
+
+    # ✅ FIXED: Remove timezone=True since SQLite doesn't support it
+    # We handle timezone conversion manually in the router
+    scheduled_at = Column(DateTime, nullable=False)
 
     is_active = Column(Boolean, default=True)
     consent_required = Column(Boolean, default=True)
 
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    missed_processed = Column(Boolean, default=False) 
+    created_at = Column(DateTime, server_default=func.now())
+
+    missed_processed = Column(Boolean, default=False)
