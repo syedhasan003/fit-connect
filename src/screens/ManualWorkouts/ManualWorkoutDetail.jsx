@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import BottomNav from "../../components/navigation/BottomNav";
 import { fetchVaultItemById, deleteVaultItem, updateVaultItem } from "../../api/vault";
+import { setActiveWorkoutProgram } from "../../api/user";
 
 export default function ManualWorkoutDetail() {
   const navigate = useNavigate();
@@ -77,29 +78,18 @@ export default function ManualWorkoutDetail() {
         return;
       }
 
-      // Update the workout to mark it as active
-      const updatedContent = {
-        ...workoutData,
-        isActive: true,
-        activatedAt: new Date().toISOString()
-      };
+      // Call the user API to set this workout as active
+      await setActiveWorkoutProgram(workout.id);
 
-      await updateVaultItem(id, { 
-        content: updatedContent,
-        summary: `Active Program: ${workout.title || 'Workout Program'}`
-      });
-
-      setWorkout({ 
-        ...workout, 
-        content: updatedContent 
-      });
+      // Reload the workout to reflect the active status
+      await loadWorkout();
 
       // Show success message
       alert("✅ This workout is now your active program!");
 
     } catch (error) {
       console.error("Failed to set as active:", error);
-      alert("Failed to set as active program. Please try again.");
+      alert(`❌ ${error.message || "Failed to set as active program. Please try again."}`);
     }
   };
 

@@ -13,7 +13,7 @@ function getAuthHeaders() {
 
 export async function fetchHomeOverview() {
   try {
-    const response = await fetch(`${API_BASE}/home/`, {
+    const response = await fetch(`${API_BASE}/home`, {  // ← REMOVED TRAILING SLASH
       method: 'GET',
       headers: getAuthHeaders(),
     });

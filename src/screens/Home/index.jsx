@@ -86,7 +86,7 @@ export default function Home() {
 
   const user = data.user || {};
   const name = user.full_name || user.email?.split("@")[0] || "User";
-  const today = data.today || { workout: "pending", reminders: { missed: 0 } };
+  const today = data.today || { workout: "pending", diet: {}, reminders: { missed: 0 } };
   const consistency = data.consistency || [];
   const aiSummary = data.evaluator?.ai_summary || "Keep showing up. Momentum compounds.";
 
@@ -171,7 +171,7 @@ export default function Home() {
       </header>
 
       <div style={{ padding: "0 20px" }}>
-        {/* TODAY SECTION - NOW INTERACTIVE */}
+        {/* TODAY SECTION */}
         <SectionHeader title="Today" />
         <TodayCard
           data={today}
@@ -370,17 +370,71 @@ function SectionHeader({ title }) {
 function TodayCard({ data, navigate, user }) {
   const [hoveredIndex, setHoveredIndex] = useState(null);
 
+  // Helper to get workout display
+  const getWorkoutDisplay = () => {
+    const status = data.workout || "not_set";
+
+    switch (status) {
+      case "completed":
+        return { value: "Completed", status: "success", icon: "✅" };
+      case "in_progress":
+        return { value: "In Progress", status: "in_progress", icon: "🏋️" };
+      case "pending":
+        return { value: "Pending", status: "pending", icon: "⏳" };
+      case "not_set":
+        return { value: "Not Set", status: "muted", icon: "➕" };
+      default:
+        return { value: "Pending", status: "pending", icon: "⏳" };
+    }
+  };
+
+  // Helper to get diet display
+  const getDietDisplay = () => {
+    const dietData = data.diet || {};
+    const status = dietData.status || "not_set";
+    const calories = dietData.calories || { logged: 0, target: 0 };
+
+    switch (status) {
+      case "completed":
+        return {
+          value: `${calories.logged}/${calories.target} cal ✅`,
+          status: "success",
+          icon: "✅"
+        };
+      case "in_progress":
+        return {
+          value: `${calories.logged}/${calories.target} cal`,
+          status: "in_progress",
+          icon: "🍽️"
+        };
+      case "pending":
+        return {
+          value: `0/${calories.target} cal`,
+          status: "pending",
+          icon: "⏳"
+        };
+      case "not_set":
+        return { value: "Not Set", status: "muted", icon: "➕" };
+      default:
+        return { value: "Not Set", status: "muted", icon: "➕" };
+    }
+  };
+
+  const workoutDisplay = getWorkoutDisplay();
+  const dietDisplay = getDietDisplay();
+
   // Define items with click handlers
   const items = [
     {
       label: "Workout",
-      value: data.workout === "completed" ? "Completed" : "Pending",
-      status: data.workout === "completed" ? "success" : "pending",
+      value: workoutDisplay.value,
+      status: workoutDisplay.status,
+      icon: workoutDisplay.icon,
       onClick: () => {
         // Check if user has active workout program
         if (user.active_workout_program_id) {
           // Go to workout tracking/session page
-          navigate('/workouts/start');
+          navigate('/workout-tracking');  // ✅ FIXED PATH
         } else {
           // Go to workout builder for first-time setup
           navigate('/workout-builder');
@@ -389,13 +443,14 @@ function TodayCard({ data, navigate, user }) {
     },
     {
       label: "Diet",
-      value: "Coming soon",
-      status: "muted",
+      value: dietDisplay.value,
+      status: dietDisplay.status,
+      icon: dietDisplay.icon,
       onClick: () => {
         // Check if user has active diet plan
         if (user.active_diet_plan_id) {
           // Go to meal logging page
-          navigate('/meals/log');
+          navigate('/meal-logging');  // ✅ FIXED PATH
         } else {
           // Go to diet builder for first-time setup
           navigate('/diet-builder');
@@ -406,6 +461,7 @@ function TodayCard({ data, navigate, user }) {
       label: "Reminders",
       value: `${data.reminders?.missed || 0} missed`,
       status: (data.reminders?.missed || 0) > 0 ? "warning" : "muted",
+      icon: (data.reminders?.missed || 0) > 0 ? "⚠️" : "✅",
       onClick: () => navigate('/reminders'),
     },
   ];
@@ -484,6 +540,8 @@ function TodayCard({ data, navigate, user }) {
                   ? "#f59e0b"
                   : item.status === "pending"
                   ? "#8b5cf6"
+                  : item.status === "in_progress"
+                  ? "#3b82f6"
                   : "rgba(255,255,255,0.5)",
               }}>
                 {item.value}

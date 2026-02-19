@@ -12,7 +12,7 @@ import Central from "./screens/Central";
 import Vault from "./screens/Vault";
 import Profile from "./screens/Profile";
 import WorkoutBuilder from "./screens/WorkoutBuilder";
-import Diet from "./screens/Diet";
+import DietBuilder from "./screens/DietBuilder";
 import Login from "./screens/Login";
 import Register from "./screens/Register";
 
@@ -27,6 +27,10 @@ import ManualWorkoutDetail from "./screens/ManualWorkouts/ManualWorkoutDetail";
 import Reminders from "./screens/Reminders";
 import CreateReminder from "./screens/Reminders/CreateReminder";
 import EditReminder from "./screens/Reminders/EditReminder";
+
+// ✅ NEW: Tracking Screens
+import WorkoutTracking from "./screens/WorkoutTracking";
+import MealLogging from "./screens/MealLogging";
 
 function AppRoutes() {
   const { isAuthenticated, initialized } = useAuth();
@@ -176,6 +180,7 @@ function AppRoutes() {
         }
       />
 
+      {/* ✅ WORKOUT & DIET ROUTES */}
       <Route
         path="/workout-builder"
         element={
@@ -186,10 +191,29 @@ function AppRoutes() {
       />
 
       <Route
-        path="/diet/*"
+        path="/diet-builder"
         element={
           <ProtectedRoute>
-            <Diet />
+            <DietBuilder />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* ✅ NEW: TRACKING ROUTES */}
+      <Route
+        path="/workout-tracking"
+        element={
+          <ProtectedRoute>
+            <WorkoutTracking />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/meal-logging"
+        element={
+          <ProtectedRoute>
+            <MealLogging />
           </ProtectedRoute>
         }
       />

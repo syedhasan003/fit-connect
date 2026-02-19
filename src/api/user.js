@@ -189,3 +189,8 @@ export async function getMyGym() {
     throw error;
   }
 }
+
+// ✅ GET USER PROFILE (alias for getCurrentUser)
+export async function getUserProfile() {
+  return getCurrentUser();
+}
