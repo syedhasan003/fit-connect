@@ -110,7 +110,7 @@ def set_active_workout_program(
     This is the workout that will be tracked on the home screen.
     """
     # Verify the workout exists and belongs to the user
-    from app.models.vault import VaultItem
+    from app.models.vault_item import VaultItem
     workout = db.query(VaultItem).filter(
         VaultItem.id == data.workout_id,
         VaultItem.user_id == current_user.id,

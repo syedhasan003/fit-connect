@@ -1,6 +1,8 @@
 """
 Workout Session & Exercise Log Endpoints
 Real-time workout tracking with AI feedback
+
+✅ FIXED: Schema now accepts program_id and day_number from frontend
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -44,8 +46,12 @@ class ExerciseLogUpdate(BaseModel):
 
 
 class WorkoutSessionCreate(BaseModel):
-    manual_workout_id: int
-    planned_exercises_count: int
+    """
+    ✅ FIXED: Now accepts program_id and day_number (what frontend sends)
+    Backend will look up exercises and calculate planned_exercises_count
+    """
+    program_id: int  # ✅ Changed from manual_workout_id
+    day_number: int  # ✅ Added to get correct exercises
     energy_level_start: Optional[str] = None
     soreness_level_start: Optional[int] = None
 
@@ -79,6 +85,85 @@ class WorkoutSessionResponse(BaseModel):
 # WORKOUT SESSION ENDPOINTS
 # ============================================================================
 
+@router.get("/next-day")
+async def get_next_workout_day(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Get the next workout day user should do based on their active program and history.
+    Returns program details and exercises for the next day.
+    """
+    # Check if user has active workout program
+    if not current_user.active_workout_program_id:
+        raise HTTPException(
+            status_code=404,
+            detail="No active workout program. Please set a workout as active first."
+        )
+
+    # Get the workout program from vault
+    from app.models.vault_item import VaultItem
+    workout = db.query(VaultItem).filter(
+        VaultItem.id == current_user.active_workout_program_id,
+        VaultItem.user_id == current_user.id
+    ).first()
+
+    if not workout:
+        raise HTTPException(
+            status_code=404,
+            detail="Active workout program not found in vault"
+        )
+
+    # Get workout data (FIXED: using 'content' instead of 'data')
+    workout_data = workout.content or {}
+    days = workout_data.get("days", [])
+
+    if not days or len(days) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="This workout program has no days/exercises configured"
+        )
+
+    # Get last completed session to determine next day
+    last_session = db.query(WorkoutSession).filter(
+        WorkoutSession.user_id == current_user.id,
+        WorkoutSession.status == SessionStatus.COMPLETED
+    ).order_by(WorkoutSession.started_at.desc()).first()
+
+    # Determine next day number
+    total_days = len(days)
+
+    if not last_session:
+        # First workout - start from day 1
+        next_day_number = 1
+    else:
+        # Get last day from session (we need to track this)
+        # For now, cycle through days (1, 2, 3, 1, 2, 3, ...)
+        # TODO: Store day_number in WorkoutSession for accurate tracking
+
+        # Simple rotation for now
+        # Count completed sessions for this workout program
+        completed_count = db.query(WorkoutSession).filter(
+            WorkoutSession.user_id == current_user.id,
+            WorkoutSession.status == SessionStatus.COMPLETED
+        ).count()
+
+        # Rotate through days
+        next_day_number = (completed_count % total_days) + 1
+
+    # Get the day data
+    day_index = next_day_number - 1
+    next_day = days[day_index]
+
+    return {
+        "program_id": workout.id,
+        "program_name": workout_data.get("name", "Workout Program"),
+        "day_number": next_day_number,
+        "day_name": next_day.get("name", f"Day {next_day_number}"),
+        "exercises": next_day.get("exercises", [])
+    }
+
+
 @router.post("/sessions/start", response_model=WorkoutSessionResponse, status_code=status.HTTP_201_CREATED)
 async def start_workout_session(
     data: WorkoutSessionCreate,
@@ -86,8 +171,8 @@ async def start_workout_session(
     current_user = Depends(get_current_user)
 ):
     """
-    Start a new workout session.
-    Creates session in IN_PROGRESS state.
+    ✅ FIXED: Now accepts program_id and day_number from frontend
+    Looks up the workout program, gets exercises for the day, and calculates planned_exercises_count
     """
     # Check if user has active session
     active_session = db.query(WorkoutSession).filter(
@@ -101,12 +186,39 @@ async def start_workout_session(
             detail="You already have an active workout session. Complete or abandon it first."
         )
 
+    # ✅ NEW: Get workout program and exercises to calculate planned_exercises_count
+    from app.models.vault_item import VaultItem
+    workout = db.query(VaultItem).filter(
+        VaultItem.id == data.program_id,
+        VaultItem.user_id == current_user.id
+    ).first()
+
+    if not workout:
+        raise HTTPException(
+            status_code=404,
+            detail="Workout program not found"
+        )
+
+    # Get exercises for the day
+    workout_data = workout.content or {}
+    days = workout_data.get("days", [])
+
+    if data.day_number < 1 or data.day_number > len(days):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid day number. Program has {len(days)} days."
+        )
+
+    day_index = data.day_number - 1
+    day_exercises = days[day_index].get("exercises", [])
+    planned_exercises_count = len(day_exercises)
+
     # Create new session
     session = WorkoutSession(
         user_id=current_user.id,
-        manual_workout_id=data.manual_workout_id,
+        manual_workout_id=data.program_id,  # Store program_id as manual_workout_id
         status=SessionStatus.IN_PROGRESS,
-        planned_exercises_count=data.planned_exercises_count,
+        planned_exercises_count=planned_exercises_count,  # ✅ Calculated from exercises
         completed_exercises_count=0,
         skipped_exercises_count=0,
         energy_level_start=data.energy_level_start,
