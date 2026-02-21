@@ -1,646 +1,675 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   startWorkoutSession,
   getActiveSession,
-  logExerciseSet,
   completeWorkoutSession,
+  abandonWorkoutSession,
   getNextWorkoutDay,
 } from '../../api/workout';
 
+// ─── Inject global CSS ────────────────────────────────────────────────────────
+const injectCSS = () => {
+  if (document.getElementById('wt-styles')) return;
+  const el = document.createElement('style');
+  el.id = 'wt-styles';
+  el.textContent = `
+    @keyframes wt-spin { to { transform: rotate(360deg); } }
+    @keyframes wt-fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes wt-slideUp { from { opacity: 0; transform: translateY(60px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes wt-pop { 0% { transform: scale(0.8); opacity: 0; } 60% { transform: scale(1.06); } 100% { transform: scale(1); opacity: 1; } }
+    .wt-set-done { animation: wt-pop 0.3s ease forwards; }
+    .wt-summary-card { animation: wt-fadeIn 0.5s ease both; }
+    .wt-abandon-sheet { animation: wt-slideUp 0.3s cubic-bezier(0.34,1.56,0.64,1); }
+    .wt-pills::-webkit-scrollbar { display: none; }
+    .wt-num-input::-webkit-inner-spin-button,
+    .wt-num-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+    .wt-num-input { -moz-appearance: textfield; }
+    .wt-pill-btn { transition: all 0.2s; }
+    .wt-pill-btn:active { transform: scale(0.94); }
+    .wt-check-btn { transition: all 0.2s; }
+    .wt-check-btn:active { transform: scale(0.9); }
+    .wt-finish-btn { transition: all 0.3s; }
+    .wt-finish-btn:active { transform: scale(0.97); }
+  `;
+  document.head.appendChild(el);
+};
+
+// ─── Design tokens ────────────────────────────────────────────────────────────
+const C = {
+  bg:         '#0d0d0f',
+  surface:    '#18181c',
+  surface2:   '#222228',
+  border:     '#2a2a34',
+  accent:     '#6366f1',
+  accentGlow: 'rgba(99,102,241,0.22)',
+  accentDim:  'rgba(99,102,241,0.14)',
+  green:      '#22c55e',
+  greenDim:   'rgba(34,197,94,0.13)',
+  greenGlow:  'rgba(34,197,94,0.3)',
+  orange:     '#f97316',
+  orangeDim:  'rgba(249,115,22,0.13)',
+  red:        '#ef4444',
+  redDim:     'rgba(239,68,68,0.13)',
+  text:       '#f1f1f3',
+  muted:      '#6b7280',
+  muted2:     '#9ca3af',
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function formatDuration(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function buildInitialSets(exercises) {
+  const map = {};
+  exercises.forEach((ex) => {
+    map[ex.id] = Array.from({ length: ex.sets || 3 }, (_, i) => ({
+      setIdx: i,
+      weight: '',
+      reps: String(ex.reps || ''),
+      done: false,
+    }));
+  });
+  return map;
+}
+
+// ─── SVG Circular Rest Timer Overlay ─────────────────────────────────────────
+function CircularTimer({ seconds, total, onSkip }) {
+  const R = 72;
+  const circ = 2 * Math.PI * R;
+  const dash = total > 0 ? circ * (seconds / total) : 0;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 200,
+      background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', gap: 28,
+    }}>
+      <p style={{ color: C.muted2, fontSize: 12, letterSpacing: 3, textTransform: 'uppercase', margin: 0 }}>
+        Rest Timer
+      </p>
+      <svg width={184} height={184} style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx={92} cy={92} r={R} fill="none" stroke={C.surface2} strokeWidth={9} />
+        <circle
+          cx={92} cy={92} r={R} fill="none"
+          stroke={C.orange} strokeWidth={9}
+          strokeLinecap="round"
+          strokeDasharray={`${dash} ${circ}`}
+          style={{ transition: 'stroke-dasharray 1s linear' }}
+        />
+        <g transform="rotate(90,92,92)">
+          <text x={92} y={82} textAnchor="middle" dominantBaseline="middle"
+            fill={C.text} fontSize={42} fontWeight="800" fontFamily="system-ui,-apple-system">
+            {seconds}
+          </text>
+          <text x={92} y={116} textAnchor="middle" dominantBaseline="middle"
+            fill={C.muted} fontSize={13} fontFamily="system-ui,-apple-system">
+            seconds
+          </text>
+        </g>
+      </svg>
+      <button onClick={onSkip} style={{
+        padding: '13px 44px',
+        background: C.surface2, border: `1px solid ${C.border}`,
+        borderRadius: 100, color: C.text, fontSize: 15,
+        fontWeight: 600, cursor: 'pointer', letterSpacing: 0.4,
+      }}>
+        Skip Rest
+      </button>
+    </div>
+  );
+}
+
+// ─── Abandon Modal (bottom sheet) ────────────────────────────────────────────
+function AbandonModal({ onConfirm, onCancel, loading }) {
+  const [reason, setReason] = useState('');
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 300,
+      background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)',
+      display: 'flex', alignItems: 'flex-end',
+    }}>
+      <div className="wt-abandon-sheet" style={{
+        width: '100%', background: C.surface,
+        borderRadius: '24px 24px 0 0', padding: '28px 20px 44px',
+        border: `1px solid ${C.border}`, borderBottom: 'none',
+        boxSizing: 'border-box',
+      }}>
+        <div style={{ width: 40, height: 4, background: C.border, borderRadius: 2, margin: '0 auto 24px' }} />
+        <h3 style={{ color: C.text, fontSize: 21, fontWeight: 800, margin: '0 0 8px' }}>Abandon Workout?</h3>
+        <p style={{ color: C.muted, fontSize: 14, margin: '0 0 20px', lineHeight: 1.5 }}>
+          Your session will be saved but won't count as completed.
+        </p>
+        <textarea
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Reason (optional)..."
+          rows={3}
+          style={{
+            width: '100%', padding: 14, borderRadius: 12,
+            background: C.surface2, border: `1px solid ${C.border}`,
+            color: C.text, fontSize: 14, resize: 'none',
+            boxSizing: 'border-box', marginBottom: 16,
+            fontFamily: 'inherit', outline: 'none', lineHeight: 1.5,
+          }}
+        />
+        <button onClick={() => onConfirm(reason)} disabled={loading} style={{
+          width: '100%', padding: 16,
+          background: C.red, border: 'none', borderRadius: 14,
+          color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer',
+          marginBottom: 10, opacity: loading ? 0.65 : 1,
+        }}>
+          {loading ? 'Abandoning...' : 'Yes, Abandon'}
+        </button>
+        <button onClick={onCancel} style={{
+          width: '100%', padding: 16,
+          background: C.surface2, border: `1px solid ${C.border}`,
+          borderRadius: 14, color: C.text, fontSize: 16, fontWeight: 600, cursor: 'pointer',
+        }}>
+          Keep Going
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Summary Screen ───────────────────────────────────────────────────────────
+function SummaryScreen({ session, setLogs, exercises, duration, onGoHome }) {
+  const doneSets     = Object.values(setLogs).reduce((a, s) => a + s.filter(x => x.done).length, 0);
+  const totalVolume  = Object.values(setLogs).reduce((a, s) =>
+    a + s.filter(x => x.done).reduce((b, x) => b + (parseFloat(x.weight)||0) * (parseInt(x.reps)||0), 0), 0);
+  const doneExercises = Object.values(setLogs).filter(s => s.some(x => x.done)).length;
+
+  const stats = [
+    { label: 'Duration',   value: formatDuration(duration), icon: '⏱' },
+    { label: 'Exercises',  value: `${doneExercises} / ${exercises.length}`, icon: '💪' },
+    { label: 'Total Sets', value: doneSets,                 icon: '🔁' },
+    { label: 'Volume',     value: `${Math.round(totalVolume).toLocaleString()} kg`, icon: '⚡' },
+  ];
+
+  return (
+    <div style={{
+      minHeight: '100vh', background: C.bg,
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      padding: '40px 20px', gap: 28,
+    }}>
+      <div style={{ fontSize: 72, animation: 'wt-pop 0.6s ease' }}>🏆</div>
+      <div style={{ textAlign: 'center' }}>
+        <h2 style={{ color: C.text, fontSize: 28, fontWeight: 800, margin: '0 0 8px' }}>Workout Complete!</h2>
+        <p style={{ color: C.muted2, fontSize: 14, margin: 0 }}>
+          {session?.program_name} · Day {session?.day_number} · {session?.day_name}
+        </p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, width: '100%', maxWidth: 380 }}>
+        {stats.map((s, i) => (
+          <div key={s.label} className="wt-summary-card" style={{
+            animationDelay: `${i * 0.1}s`,
+            background: C.surface, borderRadius: 18,
+            padding: '20px 16px', textAlign: 'center',
+            border: `1px solid ${C.border}`,
+          }}>
+            <div style={{ fontSize: 30, marginBottom: 8 }}>{s.icon}</div>
+            <div style={{ color: C.text, fontSize: 22, fontWeight: 800 }}>{s.value}</div>
+            <div style={{ color: C.muted, fontSize: 12, marginTop: 4 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <button onClick={onGoHome} style={{
+        padding: '16px 52px',
+        background: `linear-gradient(135deg, ${C.accent}, #818cf8)`,
+        border: 'none', borderRadius: 100,
+        color: '#fff', fontSize: 17, fontWeight: 800,
+        cursor: 'pointer', letterSpacing: 0.3,
+        boxShadow: `0 8px 32px ${C.accentGlow}`,
+      }}>
+        Back to Home
+      </button>
+    </div>
+  );
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function WorkoutTracking() {
+  injectCSS();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [session, setSession] = useState(null);
-  const [exercises, setExercises] = useState([]);
-  const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
-  const [sets, setSets] = useState({});
-  const [restTimer, setRestTimer] = useState(null);
-  const [restSeconds, setRestSeconds] = useState(0);
-  const [dayInfo, setDayInfo] = useState(null);
+
+  // — Data
+  const [loading,    setLoading]    = useState(true);
+  const [error,      setError]      = useState(null);
+  const [session,    setSession]    = useState(null);
+  const [exercises,  setExercises]  = useState([]);
+  const [setLogs,    setSetLogs]    = useState({});
+
+  // — UI
+  const [currentIdx,   setCurrentIdx]   = useState(0);
+  const [phase,        setPhase]        = useState('workout'); // 'workout' | 'rest' | 'summary'
+  const [restSeconds,  setRestSeconds]  = useState(0);
+  const [restTotal,    setRestTotal]    = useState(0);
+  const [showAbandon,  setShowAbandon]  = useState(false);
+  const [abandoning,   setAbandoning]   = useState(false);
+  const [completing,   setCompleting]   = useState(false);
+
+  // — Timers
+  const [sessionSec,   setSessionSec]   = useState(0);
+  const sessionRef  = useRef(null);
+  const restRef     = useRef(null);
+  const pillsRef    = useRef(null);
+
+  // ── Bootstrap ──────────────────────────────────────────────────────────────
+  useEffect(() => { loadWorkoutSession(); }, []);
 
   useEffect(() => {
-    loadWorkoutSession();
+    sessionRef.current = setInterval(() => setSessionSec(s => s + 1), 1000);
+    return () => clearInterval(sessionRef.current);
   }, []);
 
   useEffect(() => {
-    let interval;
-    if (restTimer && restSeconds > 0) {
-      interval = setInterval(() => {
-        setRestSeconds((prev) => {
-          if (prev <= 1) {
-            setRestTimer(null);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [restTimer, restSeconds]);
+    if (phase !== 'rest') return;
+    restRef.current = setInterval(() => {
+      setRestSeconds(prev => {
+        if (prev <= 1) { clearInterval(restRef.current); setPhase('workout'); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(restRef.current);
+  }, [phase]);
 
+  useEffect(() => {
+    if (!pillsRef.current) return;
+    const pill = pillsRef.current.children[currentIdx];
+    if (pill) pill.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }, [currentIdx]);
+
+  // ── Load ───────────────────────────────────────────────────────────────────
   const loadWorkoutSession = async () => {
     try {
-      setLoading(true);
+      setLoading(true); setError(null);
+      let nextDay;
+      try { nextDay = await getNextWorkoutDay(); }
+      catch { setError('No active workout program. Please set one in the Vault first.'); return; }
 
-      // Check for active session first
       let activeSession = await getActiveSession();
-
       if (!activeSession) {
-        // Get next workout day
-        const nextDay = await getNextWorkoutDay();
-        if (!nextDay) {
-          alert('No active workout program found. Please set an active workout first.');
-          navigate('/');
-          return;
-        }
-
-        setDayInfo(nextDay);
-
-        // Start new session
-        activeSession = await startWorkoutSession(
-          nextDay.program_id,
-          nextDay.day_number
-        );
+        activeSession = await startWorkoutSession(nextDay.program_id, nextDay.day_number);
       }
 
-      setSession(activeSession);
-      setExercises(activeSession.exercises || []);
-
-      // Initialize sets tracking
-      const initialSets = {};
-      activeSession.exercises?.forEach((exercise) => {
-        initialSets[exercise.id] = exercise.logged_sets || [];
+      setSession({
+        ...activeSession,
+        program_name: nextDay.program_name,
+        day_number:   nextDay.day_number,
+        day_name:     nextDay.day_name,
       });
-      setSets(initialSets);
-    } catch (error) {
-      console.error('Failed to load workout session:', error);
-      alert(error.message || 'Failed to load workout session');
-      navigate('/');
+      const exList = nextDay.exercises || [];
+      setExercises(exList);
+      setSetLogs(buildInitialSets(exList));
+    } catch (err) {
+      setError(err.message || 'Failed to load workout session');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogSet = async (exerciseId, setData) => {
+  // ── Set helpers ────────────────────────────────────────────────────────────
+  const updateSet = useCallback((exId, idx, field, value) => {
+    setSetLogs(prev => ({
+      ...prev,
+      [exId]: prev[exId].map((s, i) => i === idx ? { ...s, [field]: value } : s),
+    }));
+  }, []);
+
+  const addSet = useCallback((exId, targetReps) => {
+    setSetLogs(prev => ({
+      ...prev,
+      [exId]: [...prev[exId], { setIdx: prev[exId].length, weight: '', reps: String(targetReps || ''), done: false }],
+    }));
+  }, []);
+
+  const markSetDone = useCallback((exId, idx, restSec) => {
+    setSetLogs(prev => ({
+      ...prev,
+      [exId]: prev[exId].map((s, i) => i === idx ? { ...s, done: true } : s),
+    }));
+    setRestTotal(restSec);
+    setRestSeconds(restSec);
+    setPhase('rest');
+  }, []);
+
+  const skipRest = () => { clearInterval(restRef.current); setPhase('workout'); };
+
+  // ── Actions ────────────────────────────────────────────────────────────────
+  const handleComplete = async () => {
     try {
-      const result = await logExerciseSet(session.id, {
-        exercise_id: exerciseId,
-        set_number: (sets[exerciseId]?.length || 0) + 1,
-        weight: parseFloat(setData.weight),
-        reps: parseInt(setData.reps),
-        notes: setData.notes || '',
-      });
-
-      // Update local state
-      setSets((prev) => ({
-        ...prev,
-        [exerciseId]: [...(prev[exerciseId] || []), result],
-      }));
-
-      // Start rest timer (default 90 seconds)
-      setRestTimer(exerciseId);
-      setRestSeconds(90);
-    } catch (error) {
-      console.error('Failed to log set:', error);
-      alert(error.message || 'Failed to log set');
-    }
-  };
-
-  const handleCompleteWorkout = async () => {
-    try {
-      if (!window.confirm('Are you sure you want to complete this workout?')) {
-        return;
-      }
-
+      setCompleting(true);
       await completeWorkoutSession(session.id);
-      alert('🎉 Workout completed! Great job!');
+      clearInterval(sessionRef.current);
+      setPhase('summary');
+    } catch (err) {
+      alert(err.message || 'Failed to complete workout');
+    } finally { setCompleting(false); }
+  };
+
+  const handleAbandon = async (reason) => {
+    try {
+      setAbandoning(true);
+      await abandonWorkoutSession(session.id, reason);
+      clearInterval(sessionRef.current);
       navigate('/');
-    } catch (error) {
-      console.error('Failed to complete workout:', error);
-      alert(error.message || 'Failed to complete workout');
+    } catch (err) {
+      alert(err.message || 'Failed to abandon session');
+      setAbandoning(false);
     }
   };
 
-  const skipRestTimer = () => {
-    setRestTimer(null);
-    setRestSeconds(0);
+  // ── Derived ────────────────────────────────────────────────────────────────
+  const exerciseStatus = (exId) => {
+    const sets = setLogs[exId] || [];
+    const done = sets.filter(s => s.done).length;
+    if (done === 0) return 'idle';
+    if (done >= sets.length) return 'done';
+    return 'active';
   };
 
-  if (loading) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.loadingContainer}>
-          <div style={styles.spinner}></div>
-          <p style={styles.loadingText}>Loading workout...</p>
-        </div>
-      </div>
-    );
-  }
+  const totalDone    = exercises.filter(ex => exerciseStatus(ex.id) === 'done').length;
+  const progress     = exercises.length ? Math.round((totalDone / exercises.length) * 100) : 0;
+  const totalSetsLog = Object.values(setLogs).reduce((a, s) => a + s.filter(x => x.done).length, 0);
 
-  if (!session || exercises.length === 0) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.emptyState}>
-          <h2>No exercises found</h2>
-          <p>This workout doesn't have any exercises yet.</p>
-          <button onClick={() => navigate('/')} style={styles.backButton}>
-            Go Home
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // ─── Loading ────────────────────────────────────────────────────────────────
+  if (loading) return (
+    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+      <div style={{ width: 48, height: 48, border: `4px solid ${C.surface2}`, borderTop: `4px solid ${C.accent}`, borderRadius: '50%', animation: 'wt-spin 0.8s linear infinite' }} />
+      <p style={{ color: C.muted, fontSize: 14 }}>Loading workout...</p>
+    </div>
+  );
 
-  const currentExercise = exercises[currentExerciseIndex];
-  const currentSets = sets[currentExercise.id] || [];
-  const totalExercises = exercises.length;
-  const completedExercises = Object.values(sets).filter((s) => s.length > 0).length;
-  const progress = (completedExercises / totalExercises) * 100;
+  // ─── Error ──────────────────────────────────────────────────────────────────
+  if (error) return (
+    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16, textAlign: 'center' }}>
+      <div style={{ fontSize: 48 }}>😕</div>
+      <p style={{ color: C.text, fontSize: 17, fontWeight: 600, maxWidth: 300, lineHeight: 1.5 }}>{error}</p>
+      <button onClick={() => navigate('/')} style={{ padding: '14px 36px', background: C.accent, border: 'none', borderRadius: 100, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+        Go Home
+      </button>
+    </div>
+  );
 
+  // ─── Summary ────────────────────────────────────────────────────────────────
+  if (phase === 'summary') return (
+    <SummaryScreen
+      session={session} setLogs={setLogs} exercises={exercises}
+      duration={sessionSec} onGoHome={() => navigate('/')}
+    />
+  );
+
+  const currentExercise = exercises[currentIdx];
+  const currentSets     = setLogs[currentExercise?.id] || [];
+
+  // ─── Main UI ────────────────────────────────────────────────────────────────
   return (
-    <div style={styles.container}>
-      {/* Header */}
-      <div style={styles.header}>
-        <button onClick={() => navigate('/')} style={styles.backBtn}>
-          ← Back
-        </button>
-        <div style={styles.headerContent}>
-          <h1 style={styles.title}>{session.program_name || 'Workout'}</h1>
-          <p style={styles.subtitle}>
-            Day {session.day_number} • {session.day_name || `Workout ${session.day_number}`}
-          </p>
-        </div>
-      </div>
+    <div style={{ minHeight: '100vh', background: C.bg, color: C.text, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', paddingBottom: 110 }}>
 
-      {/* Progress Bar */}
-      <div style={styles.progressContainer}>
-        <div style={styles.progressBar}>
-          <div style={{ ...styles.progressFill, width: `${progress}%` }}></div>
-        </div>
-        <p style={styles.progressText}>
-          {completedExercises} / {totalExercises} exercises started
-        </p>
-      </div>
+      {/* REST TIMER OVERLAY */}
+      {phase === 'rest' && <CircularTimer seconds={restSeconds} total={restTotal} onSkip={skipRest} />}
 
-      {/* Rest Timer */}
-      {restTimer && (
-        <div style={styles.restTimerCard}>
-          <div style={styles.timerIcon}>⏱️</div>
-          <div style={styles.timerContent}>
-            <h3 style={styles.timerTitle}>Rest Timer</h3>
-            <p style={styles.timerCountdown}>{restSeconds}s</p>
-          </div>
-          <button onClick={skipRestTimer} style={styles.skipButton}>
-            Skip
-          </button>
-        </div>
-      )}
+      {/* ABANDON MODAL */}
+      {showAbandon && <AbandonModal onConfirm={handleAbandon} onCancel={() => setShowAbandon(false)} loading={abandoning} />}
 
-      {/* Current Exercise */}
-      <div style={styles.exerciseCard}>
-        <div style={styles.exerciseHeader}>
-          <h2 style={styles.exerciseName}>{currentExercise.name}</h2>
-          <div style={styles.exerciseNav}>
-            <button
-              onClick={() =>
-                setCurrentExerciseIndex(Math.max(0, currentExerciseIndex - 1))
-              }
-              disabled={currentExerciseIndex === 0}
-              style={{
-                ...styles.navButton,
-                ...(currentExerciseIndex === 0 ? styles.navButtonDisabled : {}),
-              }}
-            >
-              ←
+      {/* ── STICKY HEADER ── */}
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 100,
+        background: `${C.bg}ee`, backdropFilter: 'blur(18px)',
+        borderBottom: `1px solid ${C.border}`,
+        padding: '14px 20px',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          {/* Left */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <button onClick={() => navigate('/')} style={{ background: 'none', border: 'none', color: C.accent, fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: 0, textAlign: 'left' }}>
+              ← Back
             </button>
-            <span style={styles.exerciseCounter}>
-              {currentExerciseIndex + 1} / {totalExercises}
+            <span style={{ fontSize: 18, fontWeight: 800, color: C.text }}>{session?.program_name || 'Workout'}</span>
+            <span style={{ fontSize: 12, color: C.muted }}>Day {session?.day_number} · {session?.day_name}</span>
+          </div>
+          {/* Right */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+            <span style={{ fontSize: 24, fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: C.accent, letterSpacing: 1 }}>
+              {formatDuration(sessionSec)}
             </span>
-            <button
-              onClick={() =>
-                setCurrentExerciseIndex(
-                  Math.min(totalExercises - 1, currentExerciseIndex + 1)
-                )
-              }
-              disabled={currentExerciseIndex === totalExercises - 1}
-              style={{
-                ...styles.navButton,
-                ...(currentExerciseIndex === totalExercises - 1
-                  ? styles.navButtonDisabled
-                  : {}),
-              }}
-            >
-              →
+            <button onClick={() => setShowAbandon(true)} style={{
+              padding: '4px 12px',
+              background: C.redDim, border: `1px solid ${C.red}44`,
+              borderRadius: 100, color: C.red, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.8,
+            }}>
+              ABANDON
             </button>
           </div>
         </div>
 
-        <div style={styles.targetInfo}>
-          <div style={styles.targetItem}>
-            <span style={styles.targetLabel}>Target:</span>
-            <span style={styles.targetValue}>
-              {currentExercise.sets} sets × {currentExercise.reps} reps
-            </span>
+        {/* Progress bar */}
+        <div style={{ marginTop: 12 }}>
+          <div style={{ height: 5, background: C.surface2, borderRadius: 3, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', width: `${progress}%`,
+              background: `linear-gradient(90deg, ${C.accent}, #818cf8)`,
+              borderRadius: 3, transition: 'width 0.5s ease',
+            }} />
           </div>
-          {currentExercise.rest_seconds && (
-            <div style={styles.targetItem}>
-              <span style={styles.targetLabel}>Rest:</span>
-              <span style={styles.targetValue}>{currentExercise.rest_seconds}s</span>
-            </div>
-          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5 }}>
+            <span style={{ fontSize: 11, color: C.muted }}>{progress}% complete</span>
+            <span style={{ fontSize: 11, color: C.muted }}>{totalSetsLog} sets logged</span>
+          </div>
         </div>
+      </div>
 
-        {/* Logged Sets */}
-        {currentSets.length > 0 && (
-          <div style={styles.setsContainer}>
-            <h3 style={styles.setsTitle}>Completed Sets</h3>
-            {currentSets.map((set, index) => (
-              <div key={index} style={styles.setRow}>
-                <span style={styles.setNumber}>Set {set.set_number}</span>
-                <span style={styles.setDetails}>
-                  {set.weight} kg × {set.reps} reps
-                </span>
-                <span style={styles.setCheck}>✓</span>
+      {/* ── EXERCISE MAP PILLS ── */}
+      <div style={{ padding: '16px 20px 4px' }}>
+        <p style={{ fontSize: 11, color: C.muted, textTransform: 'uppercase', letterSpacing: 1.5, margin: '0 0 10px' }}>Exercises</p>
+        <div ref={pillsRef} className="wt-pills" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+          {exercises.map((ex, i) => {
+            const st      = exerciseStatus(ex.id);
+            const isActive = i === currentIdx;
+            const bg =
+              isActive   ? C.accent :
+              st==='done'? C.green  :
+              st==='active'? '#4338ca' :
+              C.surface2;
+            const col = (st === 'idle' && !isActive) ? C.muted2 : '#fff';
+            return (
+              <button key={ex.id} className="wt-pill-btn" onClick={() => setCurrentIdx(i)} style={{
+                flexShrink: 0, padding: '7px 15px', borderRadius: 100,
+                background: bg, border: `2px solid ${isActive ? C.accent : 'transparent'}`,
+                color: col, fontSize: 12, fontWeight: isActive ? 700 : 500,
+                cursor: 'pointer', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                boxShadow: isActive ? `0 0 14px ${C.accentGlow}` : 'none',
+              }}>
+                {st === 'done' ? '✓ ' : ''}{ex.name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── EXERCISE CARD ── */}
+      {currentExercise && (
+        <div style={{ padding: '14px 20px' }}>
+          <div style={{ background: C.surface, borderRadius: 22, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
+
+            {/* Card header */}
+            <div style={{
+              padding: '20px 20px 16px',
+              background: `linear-gradient(135deg, ${C.surface2} 0%, ${C.surface} 100%)`,
+              borderBottom: `1px solid ${C.border}`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <h2 style={{ fontSize: 21, fontWeight: 800, margin: '0 0 8px', color: C.text }}>{currentExercise.name}</h2>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {currentExercise.muscle_group && (
+                      <span style={{ padding: '3px 11px', background: C.accentDim, border: `1px solid ${C.accent}44`, borderRadius: 100, fontSize: 11, color: C.accent, fontWeight: 600 }}>
+                        {currentExercise.muscle_group}
+                      </span>
+                    )}
+                    {currentExercise.area && (
+                      <span style={{ padding: '3px 11px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: 100, fontSize: 11, color: C.muted2 }}>
+                        {currentExercise.area}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {/* Nav arrows */}
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => setCurrentIdx(Math.max(0, currentIdx - 1))} disabled={currentIdx === 0}
+                    style={{ width: 36, height: 36, borderRadius: 10, background: C.surface2, border: `1px solid ${C.border}`, color: currentIdx === 0 ? C.border : C.text, fontSize: 16, cursor: currentIdx === 0 ? 'not-allowed' : 'pointer' }}>
+                    ←
+                  </button>
+                  <button onClick={() => setCurrentIdx(Math.min(exercises.length - 1, currentIdx + 1))} disabled={currentIdx === exercises.length - 1}
+                    style={{ width: 36, height: 36, borderRadius: 10, background: C.surface2, border: `1px solid ${C.border}`, color: currentIdx === exercises.length - 1 ? C.border : C.text, fontSize: 16, cursor: currentIdx === exercises.length - 1 ? 'not-allowed' : 'pointer' }}>
+                    →
+                  </button>
+                </div>
               </div>
-            ))}
+
+              {/* Stats row */}
+              <div style={{ display: 'flex', gap: 24, marginTop: 14 }}>
+                {[
+                  { label: 'Sets',       val: currentSets.length },
+                  { label: 'Target Reps',val: currentExercise.reps },
+                  { label: 'Rest',       val: `${currentExercise.rest_seconds || 90}s` },
+                ].map(item => (
+                  <div key={item.label} style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 19, fontWeight: 800, color: C.accent }}>{item.val}</div>
+                    <div style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 }}>{item.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── SETS TABLE ── */}
+            {/* Table header */}
+            <div style={{ display: 'grid', gridTemplateColumns: '36px 1fr 1fr 1fr 42px', padding: '10px 16px', gap: 8, borderBottom: `1px solid ${C.border}` }}>
+              {['SET', 'PREV', 'KG', 'REPS', ''].map(h => (
+                <span key={h} style={{ fontSize: 10, color: C.muted, fontWeight: 700, letterSpacing: 1.2, textAlign: 'center' }}>{h}</span>
+              ))}
+            </div>
+
+            {/* Set rows */}
+            {currentSets.map((set, i) => {
+              const isDone = set.done;
+              return (
+                <div key={i} className={isDone ? 'wt-set-done' : ''} style={{
+                  display: 'grid', gridTemplateColumns: '36px 1fr 1fr 1fr 42px',
+                  padding: '9px 16px', gap: 8, alignItems: 'center',
+                  background: isDone ? C.greenDim : 'transparent',
+                  borderBottom: `1px solid ${C.border}`,
+                  transition: 'background 0.3s',
+                }}>
+                  {/* Set # badge */}
+                  <div style={{
+                    width: 28, height: 28, borderRadius: 8, margin: '0 auto',
+                    background: isDone ? C.green : C.surface2,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 12, fontWeight: 700, color: isDone ? '#fff' : C.muted2,
+                    boxShadow: isDone ? `0 2px 8px ${C.greenGlow}` : 'none',
+                  }}>
+                    {i + 1}
+                  </div>
+                  {/* Previous placeholder */}
+                  <div style={{ textAlign: 'center', fontSize: 11, color: C.muted }}>—</div>
+                  {/* Weight */}
+                  <input className="wt-num-input" type="number" placeholder="0" value={set.weight}
+                    onChange={e => updateSet(currentExercise.id, i, 'weight', e.target.value)}
+                    disabled={isDone}
+                    style={{
+                      padding: '8px 4px', borderRadius: 10, textAlign: 'center',
+                      background: isDone ? 'transparent' : C.surface2,
+                      border: `1px solid ${isDone ? 'transparent' : C.border}`,
+                      color: isDone ? C.muted : C.text, fontSize: 15, fontWeight: 700,
+                      width: '100%', boxSizing: 'border-box', outline: 'none',
+                    }}
+                  />
+                  {/* Reps */}
+                  <input className="wt-num-input" type="number" placeholder="0" value={set.reps}
+                    onChange={e => updateSet(currentExercise.id, i, 'reps', e.target.value)}
+                    disabled={isDone}
+                    style={{
+                      padding: '8px 4px', borderRadius: 10, textAlign: 'center',
+                      background: isDone ? 'transparent' : C.surface2,
+                      border: `1px solid ${isDone ? 'transparent' : C.border}`,
+                      color: isDone ? C.muted : C.text, fontSize: 15, fontWeight: 700,
+                      width: '100%', boxSizing: 'border-box', outline: 'none',
+                    }}
+                  />
+                  {/* Checkmark */}
+                  <button className="wt-check-btn" onClick={() => !isDone && markSetDone(currentExercise.id, i, currentExercise.rest_seconds || 90)}
+                    disabled={isDone}
+                    style={{
+                      width: 36, height: 36, borderRadius: 10, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: isDone ? C.green : C.surface2,
+                      border: `2px solid ${isDone ? C.green : C.border}`,
+                      color: isDone ? '#fff' : C.muted, fontSize: 17,
+                      cursor: isDone ? 'default' : 'pointer',
+                      boxShadow: isDone ? `0 2px 10px ${C.greenGlow}` : 'none',
+                    }}
+                  >
+                    ✓
+                  </button>
+                </div>
+              );
+            })}
+
+            {/* Add set */}
+            <div style={{ padding: '12px 16px' }}>
+              <button onClick={() => addSet(currentExercise.id, currentExercise.reps)} style={{
+                width: '100%', padding: 11,
+                background: 'transparent', border: `1px dashed ${C.border}`,
+                borderRadius: 12, color: C.muted, fontSize: 13, fontWeight: 600,
+                cursor: 'pointer', letterSpacing: 0.3,
+              }}>
+                + Add Set
+              </button>
+            </div>
           </div>
-        )}
-
-        {/* Log New Set */}
-        <ExerciseLogger
-          exerciseId={currentExercise.id}
-          setNumber={currentSets.length + 1}
-          targetReps={currentExercise.reps}
-          onLogSet={handleLogSet}
-        />
-      </div>
-
-      {/* Complete Workout Button */}
-      {completedExercises > 0 && (
-        <button onClick={handleCompleteWorkout} style={styles.completeButton}>
-          ✅ Complete Workout
-        </button>
+        </div>
       )}
+
+      {/* ── BOTTOM BAR ── */}
+      <div style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
+        background: `${C.bg}f2`, backdropFilter: 'blur(18px)',
+        borderTop: `1px solid ${C.border}`,
+        padding: '12px 20px 30px', display: 'flex', gap: 10,
+      }}>
+        {currentIdx < exercises.length - 1 && (
+          <button onClick={() => setCurrentIdx(currentIdx + 1)} style={{
+            flex: 1, padding: 15, background: C.surface2,
+            border: `1px solid ${C.border}`, borderRadius: 14,
+            color: C.text, fontSize: 15, fontWeight: 700, cursor: 'pointer',
+          }}>
+            Next →
+          </button>
+        )}
+        <button className="wt-finish-btn" onClick={handleComplete}
+          disabled={completing || totalSetsLog === 0}
+          style={{
+            flex: 2, padding: 15, border: 'none', borderRadius: 14,
+            background: totalSetsLog > 0 ? `linear-gradient(135deg, ${C.green}, #16a34a)` : C.surface2,
+            color: totalSetsLog > 0 ? '#fff' : C.muted,
+            fontSize: 15, fontWeight: 800,
+            cursor: (totalSetsLog > 0 && !completing) ? 'pointer' : 'not-allowed',
+            opacity: completing ? 0.7 : 1,
+            boxShadow: totalSetsLog > 0 ? `0 4px 20px ${C.greenGlow}` : 'none',
+          }}
+        >
+          {completing ? 'Finishing...' : '🏁 Finish Workout'}
+        </button>
+      </div>
     </div>
   );
 }
-
-function ExerciseLogger({ exerciseId, setNumber, targetReps, onLogSet }) {
-  const [weight, setWeight] = useState('');
-  const [reps, setReps] = useState(targetReps?.toString() || '');
-  const [notes, setNotes] = useState('');
-  const [logging, setLogging] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    if (!weight || !reps) {
-      alert('Please enter both weight and reps');
-      return;
-    }
-
-    try {
-      setLogging(true);
-      await onLogSet(exerciseId, { weight, reps, notes });
-
-      // Reset form
-      setWeight('');
-      setReps(targetReps?.toString() || '');
-      setNotes('');
-    } catch (error) {
-      console.error('Failed to log set:', error);
-    } finally {
-      setLogging(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} style={styles.loggerForm}>
-      <h3 style={styles.loggerTitle}>Log Set {setNumber}</h3>
-      <div style={styles.inputRow}>
-        <div style={styles.inputGroup}>
-          <label style={styles.inputLabel}>Weight (kg)</label>
-          <input
-            type="number"
-            step="0.5"
-            value={weight}
-            onChange={(e) => setWeight(e.target.value)}
-            style={styles.input}
-            placeholder="0"
-            disabled={logging}
-          />
-        </div>
-        <div style={styles.inputGroup}>
-          <label style={styles.inputLabel}>Reps</label>
-          <input
-            type="number"
-            value={reps}
-            onChange={(e) => setReps(e.target.value)}
-            style={styles.input}
-            placeholder="0"
-            disabled={logging}
-          />
-        </div>
-      </div>
-      <button type="submit" disabled={logging} style={styles.logButton}>
-        {logging ? 'Logging...' : '+ Log Set'}
-      </button>
-    </form>
-  );
-}
-
-const styles = {
-  container: {
-    minHeight: '100vh',
-    backgroundColor: '#0a0a0a',
-    color: '#ffffff',
-    padding: '20px',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-  },
-  loadingContainer: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: '80vh',
-  },
-  spinner: {
-    width: '50px',
-    height: '50px',
-    border: '4px solid rgba(255, 255, 255, 0.1)',
-    borderTop: '4px solid #00d4ff',
-    borderRadius: '50%',
-    animation: 'spin 1s linear infinite',
-  },
-  loadingText: {
-    marginTop: '20px',
-    color: '#888',
-  },
-  emptyState: {
-    textAlign: 'center',
-    padding: '40px',
-  },
-  backButton: {
-    marginTop: '20px',
-    padding: '12px 24px',
-    backgroundColor: '#1a1a1a',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '8px',
-    cursor: 'pointer',
-  },
-  header: {
-    marginBottom: '24px',
-  },
-  backBtn: {
-    background: 'none',
-    border: 'none',
-    color: '#00d4ff',
-    fontSize: '16px',
-    cursor: 'pointer',
-    marginBottom: '12px',
-    padding: '8px 0',
-  },
-  headerContent: {
-    marginTop: '8px',
-  },
-  title: {
-    fontSize: '28px',
-    fontWeight: '700',
-    margin: '0 0 8px 0',
-  },
-  subtitle: {
-    fontSize: '16px',
-    color: '#888',
-    margin: 0,
-  },
-  progressContainer: {
-    marginBottom: '24px',
-  },
-  progressBar: {
-    height: '8px',
-    backgroundColor: '#1a1a1a',
-    borderRadius: '4px',
-    overflow: 'hidden',
-    marginBottom: '8px',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#00d4ff',
-    transition: 'width 0.3s ease',
-  },
-  progressText: {
-    fontSize: '14px',
-    color: '#888',
-    margin: 0,
-  },
-  restTimerCard: {
-    backgroundColor: 'rgba(255, 165, 0, 0.1)',
-    border: '2px solid rgba(255, 165, 0, 0.3)',
-    borderRadius: '12px',
-    padding: '16px',
-    marginBottom: '24px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '16px',
-  },
-  timerIcon: {
-    fontSize: '32px',
-  },
-  timerContent: {
-    flex: 1,
-  },
-  timerTitle: {
-    margin: '0 0 4px 0',
-    fontSize: '16px',
-    fontWeight: '600',
-    color: '#ffa500',
-  },
-  timerCountdown: {
-    margin: 0,
-    fontSize: '24px',
-    fontWeight: '700',
-    color: '#ffa500',
-  },
-  skipButton: {
-    padding: '8px 16px',
-    backgroundColor: 'rgba(255, 165, 0, 0.2)',
-    color: '#ffa500',
-    border: '1px solid rgba(255, 165, 0, 0.4)',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '14px',
-    fontWeight: '500',
-  },
-  exerciseCard: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: '16px',
-    padding: '24px',
-    marginBottom: '24px',
-  },
-  exerciseHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '16px',
-  },
-  exerciseName: {
-    fontSize: '22px',
-    fontWeight: '700',
-    margin: 0,
-  },
-  exerciseNav: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-  },
-  navButton: {
-    width: '36px',
-    height: '36px',
-    borderRadius: '8px',
-    backgroundColor: '#2a2a2a',
-    border: 'none',
-    color: '#fff',
-    fontSize: '18px',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  navButtonDisabled: {
-    opacity: 0.3,
-    cursor: 'not-allowed',
-  },
-  exerciseCounter: {
-    fontSize: '14px',
-    color: '#888',
-  },
-  targetInfo: {
-    display: 'flex',
-    gap: '24px',
-    marginBottom: '24px',
-    paddingBottom: '16px',
-    borderBottom: '1px solid #2a2a2a',
-  },
-  targetItem: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '4px',
-  },
-  targetLabel: {
-    fontSize: '12px',
-    color: '#888',
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
-  },
-  targetValue: {
-    fontSize: '16px',
-    fontWeight: '600',
-    color: '#00d4ff',
-  },
-  setsContainer: {
-    marginBottom: '24px',
-  },
-  setsTitle: {
-    fontSize: '16px',
-    fontWeight: '600',
-    marginBottom: '12px',
-    color: '#888',
-  },
-  setRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '12px',
-    backgroundColor: '#0a0a0a',
-    borderRadius: '8px',
-    marginBottom: '8px',
-  },
-  setNumber: {
-    fontSize: '14px',
-    fontWeight: '500',
-    color: '#888',
-  },
-  setDetails: {
-    fontSize: '14px',
-    fontWeight: '600',
-  },
-  setCheck: {
-    fontSize: '18px',
-    color: '#00ff88',
-  },
-  loggerForm: {
-    backgroundColor: '#0a0a0a',
-    borderRadius: '12px',
-    padding: '20px',
-    border: '2px solid #2a2a2a',
-  },
-  loggerTitle: {
-    fontSize: '16px',
-    fontWeight: '600',
-    marginBottom: '16px',
-    color: '#00d4ff',
-  },
-  inputRow: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: '12px',
-    marginBottom: '16px',
-  },
-  inputGroup: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-  },
-  inputLabel: {
-    fontSize: '12px',
-    color: '#888',
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
-  },
-  input: {
-    padding: '12px',
-    backgroundColor: '#1a1a1a',
-    border: '1px solid #2a2a2a',
-    borderRadius: '8px',
-    color: '#fff',
-    fontSize: '16px',
-    fontWeight: '600',
-  },
-  logButton: {
-    width: '100%',
-    padding: '14px',
-    backgroundColor: '#00d4ff',
-    color: '#0a0a0a',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '16px',
-    fontWeight: '700',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-  },
-  completeButton: {
-    width: '100%',
-    padding: '16px',
-    backgroundColor: '#00ff88',
-    color: '#0a0a0a',
-    border: 'none',
-    borderRadius: '12px',
-    fontSize: '18px',
-    fontWeight: '700',
-    cursor: 'pointer',
-    position: 'sticky',
-    bottom: '20px',
-  },
-};
-
-// Add CSS animation for spinner
-const styleSheet = document.createElement('style');
-styleSheet.textContent = `
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-`;
-document.head.appendChild(styleSheet);
