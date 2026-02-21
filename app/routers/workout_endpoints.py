@@ -3,6 +3,8 @@ Workout Session & Exercise Log Endpoints
 Real-time workout tracking with AI feedback
 
 ✅ FIXED: Schema now accepts program_id and day_number from frontend
+✅ FIXED: Exercises are flattened from muscles → areas → exercises (vault structure)
+✅ FIXED: WorkoutSessionResponse.manual_workout_id is now Optional[int] = None
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -50,8 +52,8 @@ class WorkoutSessionCreate(BaseModel):
     ✅ FIXED: Now accepts program_id and day_number (what frontend sends)
     Backend will look up exercises and calculate planned_exercises_count
     """
-    program_id: int  # ✅ Changed from manual_workout_id
-    day_number: int  # ✅ Added to get correct exercises
+    program_id: int
+    day_number: int
     energy_level_start: Optional[str] = None
     soreness_level_start: Optional[int] = None
 
@@ -64,7 +66,7 @@ class WorkoutSessionUpdate(BaseModel):
 
 class WorkoutSessionResponse(BaseModel):
     id: int
-    manual_workout_id: int
+    manual_workout_id: Optional[int] = None   # ✅ FIXED: was `int`, caused 500 when null
     status: str
     started_at: datetime
     completed_at: Optional[datetime]
@@ -82,6 +84,40 @@ class WorkoutSessionResponse(BaseModel):
 
 
 # ============================================================================
+# HELPER: Flatten vault exercise structure
+# ============================================================================
+
+def _flatten_exercises(day: dict) -> list:
+    """
+    The WorkoutBuilder saves exercises nested as:
+        day.muscles[i].areas[j].exercises[k] = { name, sets: [{reps, weight, rir}] }
+
+    This flattens and transforms them into the shape WorkoutTracking expects:
+        { id, name, sets (count), reps (number), rest_seconds, muscle_group, area }
+    """
+    flat = []
+    for muscle in day.get("muscles", []):
+        for area in muscle.get("areas", []):
+            for ex in area.get("exercises", []):
+                sets_array = ex.get("sets", [])
+                raw_reps = sets_array[0].get("reps", 10) if sets_array else 10
+                try:
+                    reps = int(raw_reps)
+                except (ValueError, TypeError):
+                    reps = 10
+                flat.append({
+                    "id": len(flat),
+                    "name": ex.get("name", "Exercise"),
+                    "sets": len(sets_array) if sets_array else 3,
+                    "reps": reps,
+                    "rest_seconds": 90,
+                    "muscle_group": muscle.get("name", ""),
+                    "area": area.get("name", ""),
+                })
+    return flat
+
+
+# ============================================================================
 # WORKOUT SESSION ENDPOINTS
 # ============================================================================
 
@@ -94,14 +130,12 @@ async def get_next_workout_day(
     Get the next workout day user should do based on their active program and history.
     Returns program details and exercises for the next day.
     """
-    # Check if user has active workout program
     if not current_user.active_workout_program_id:
         raise HTTPException(
             status_code=404,
             detail="No active workout program. Please set a workout as active first."
         )
 
-    # Get the workout program from vault
     from app.models.vault_item import VaultItem
     workout = db.query(VaultItem).filter(
         VaultItem.id == current_user.active_workout_program_id,
@@ -109,58 +143,40 @@ async def get_next_workout_day(
     ).first()
 
     if not workout:
-        raise HTTPException(
-            status_code=404,
-            detail="Active workout program not found in vault"
-        )
+        raise HTTPException(status_code=404, detail="Active workout program not found in vault")
 
-    # Get workout data (FIXED: using 'content' instead of 'data')
     workout_data = workout.content or {}
     days = workout_data.get("days", [])
 
     if not days or len(days) == 0:
-        raise HTTPException(
-            status_code=400,
-            detail="This workout program has no days/exercises configured"
-        )
+        raise HTTPException(status_code=400, detail="This workout program has no days/exercises configured")
 
-    # Get last completed session to determine next day
     last_session = db.query(WorkoutSession).filter(
         WorkoutSession.user_id == current_user.id,
         WorkoutSession.status == SessionStatus.COMPLETED
     ).order_by(WorkoutSession.started_at.desc()).first()
 
-    # Determine next day number
     total_days = len(days)
 
     if not last_session:
-        # First workout - start from day 1
         next_day_number = 1
     else:
-        # Get last day from session (we need to track this)
-        # For now, cycle through days (1, 2, 3, 1, 2, 3, ...)
-        # TODO: Store day_number in WorkoutSession for accurate tracking
-
-        # Simple rotation for now
-        # Count completed sessions for this workout program
         completed_count = db.query(WorkoutSession).filter(
             WorkoutSession.user_id == current_user.id,
             WorkoutSession.status == SessionStatus.COMPLETED
         ).count()
-
-        # Rotate through days
         next_day_number = (completed_count % total_days) + 1
 
-    # Get the day data
     day_index = next_day_number - 1
     next_day = days[day_index]
+    exercises = _flatten_exercises(next_day)
 
     return {
-        "program_id": workout.id,
+        "program_id":   workout.id,
         "program_name": workout_data.get("name", "Workout Program"),
-        "day_number": next_day_number,
-        "day_name": next_day.get("name", f"Day {next_day_number}"),
-        "exercises": next_day.get("exercises", [])
+        "day_number":   next_day_number,
+        "day_name":     next_day.get("name", f"Day {next_day_number}"),
+        "exercises":    exercises,
     }
 
 
@@ -172,9 +188,7 @@ async def start_workout_session(
 ):
     """
     ✅ FIXED: Now accepts program_id and day_number from frontend
-    Looks up the workout program, gets exercises for the day, and calculates planned_exercises_count
     """
-    # Check if user has active session
     active_session = db.query(WorkoutSession).filter(
         WorkoutSession.user_id == current_user.id,
         WorkoutSession.status == SessionStatus.IN_PROGRESS
@@ -186,7 +200,6 @@ async def start_workout_session(
             detail="You already have an active workout session. Complete or abandon it first."
         )
 
-    # ✅ NEW: Get workout program and exercises to calculate planned_exercises_count
     from app.models.vault_item import VaultItem
     workout = db.query(VaultItem).filter(
         VaultItem.id == data.program_id,
@@ -194,31 +207,23 @@ async def start_workout_session(
     ).first()
 
     if not workout:
-        raise HTTPException(
-            status_code=404,
-            detail="Workout program not found"
-        )
+        raise HTTPException(status_code=404, detail="Workout program not found")
 
-    # Get exercises for the day
     workout_data = workout.content or {}
     days = workout_data.get("days", [])
 
     if data.day_number < 1 or data.day_number > len(days):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid day number. Program has {len(days)} days."
-        )
+        raise HTTPException(status_code=400, detail=f"Invalid day number. Program has {len(days)} days.")
 
     day_index = data.day_number - 1
-    day_exercises = days[day_index].get("exercises", [])
-    planned_exercises_count = len(day_exercises)
+    flat_exercises = _flatten_exercises(days[day_index])
+    planned_exercises_count = len(flat_exercises)
 
-    # Create new session
     session = WorkoutSession(
         user_id=current_user.id,
-        manual_workout_id=data.program_id,  # Store program_id as manual_workout_id
+        manual_workout_id=data.program_id,
         status=SessionStatus.IN_PROGRESS,
-        planned_exercises_count=planned_exercises_count,  # ✅ Calculated from exercises
+        planned_exercises_count=planned_exercises_count,
         completed_exercises_count=0,
         skipped_exercises_count=0,
         energy_level_start=data.energy_level_start,
@@ -237,15 +242,10 @@ async def get_active_session(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """
-    Get user's current active workout session.
-    Returns null if no active session.
-    """
     session = db.query(WorkoutSession).filter(
         WorkoutSession.user_id == current_user.id,
         WorkoutSession.status == SessionStatus.IN_PROGRESS
     ).first()
-
     return session
 
 
@@ -256,10 +256,6 @@ async def complete_workout_session(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """
-    Complete a workout session.
-    Calculates duration, updates status, triggers AI feedback.
-    """
     session = db.query(WorkoutSession).filter(
         WorkoutSession.id == session_id,
         WorkoutSession.user_id == current_user.id
@@ -269,21 +265,14 @@ async def complete_workout_session(
         raise HTTPException(status_code=404, detail="Workout session not found")
 
     if session.status != SessionStatus.IN_PROGRESS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Session is not in progress"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Session is not in progress")
 
-    # Update session
     session.status = SessionStatus.COMPLETED
     session.completed_at = datetime.utcnow()
     session.duration_minutes = int((session.completed_at - session.started_at).total_seconds() / 60)
     session.energy_level_end = data.energy_level_end
     session.soreness_level_end = data.soreness_level_end
     session.notes = data.notes
-
-    # TODO: Trigger AI feedback generation based on session data
-    # session.ai_feedback = await generate_ai_feedback(session)
 
     db.commit()
     db.refresh(session)
@@ -298,10 +287,6 @@ async def abandon_workout_session(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """
-    Abandon a workout session mid-workout.
-    Marks as abandoned, stores reason.
-    """
     session = db.query(WorkoutSession).filter(
         WorkoutSession.id == session_id,
         WorkoutSession.user_id == current_user.id
@@ -327,14 +312,9 @@ async def get_workout_history(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """
-    Get user's workout history.
-    Returns most recent sessions first.
-    """
     sessions = db.query(WorkoutSession).filter(
         WorkoutSession.user_id == current_user.id
     ).order_by(WorkoutSession.started_at.desc()).offset(skip).limit(limit).all()
-
     return sessions
 
 
@@ -349,11 +329,6 @@ async def log_exercise(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """
-    Add an exercise to the current workout session.
-    Called when starting a new exercise.
-    """
-    # Verify session belongs to user and is active
     session = db.query(WorkoutSession).filter(
         WorkoutSession.id == session_id,
         WorkoutSession.user_id == current_user.id,
@@ -361,12 +336,8 @@ async def log_exercise(
     ).first()
 
     if not session:
-        raise HTTPException(
-            status_code=404,
-            detail="Active workout session not found"
-        )
+        raise HTTPException(status_code=404, detail="Active workout session not found")
 
-    # Create exercise log
     log = ExerciseLog(
         workout_session_id=session_id,
         exercise_id=data.exercise_id,
@@ -393,10 +364,6 @@ async def update_exercise_log(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """
-    Update exercise log with actual performance.
-    Called in real-time as user completes sets.
-    """
     log = db.query(ExerciseLog).join(WorkoutSession).filter(
         ExerciseLog.id == log_id,
         WorkoutSession.user_id == current_user.id
@@ -405,7 +372,6 @@ async def update_exercise_log(
     if not log:
         raise HTTPException(status_code=404, detail="Exercise log not found")
 
-    # Update with actual data
     log.completed_sets = data.completed_sets
     log.actual_reps = data.actual_reps
     log.actual_weights = data.actual_weights
@@ -416,25 +382,17 @@ async def update_exercise_log(
     log.deviation_reason = data.deviation_reason
     log.completed_at = datetime.utcnow()
 
-    # Update session counts
     session = log.workout_session
     if data.skipped:
         session.skipped_exercises_count += 1
     else:
         session.completed_exercises_count += 1
 
-    # Check for deviations and form issues
     if data.form_quality in ["poor", "needs_correction"]:
         log.needs_deload = True
 
     db.commit()
     db.refresh(log)
-
-    # TODO: Trigger real-time AI analysis
-    # - Check rest times (too long? too short?)
-    # - Check weight progression
-    # - Check form degradation
-    # - Send notification if intervention needed
 
     return log
 
@@ -445,10 +403,6 @@ async def get_session_exercises(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """
-    Get all exercises for a workout session.
-    Used to display real-time progress.
-    """
     session = db.query(WorkoutSession).filter(
         WorkoutSession.id == session_id,
         WorkoutSession.user_id == current_user.id
@@ -465,6 +419,45 @@ async def get_session_exercises(
 
 
 # ============================================================================
+# ACTIVATION ENDPOINTS
+# ============================================================================
+
+@router.patch("/programs/{program_id}/activate")
+async def activate_workout_program(
+    program_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    from app.models.vault_item import VaultItem
+    workout = db.query(VaultItem).filter(
+        VaultItem.id == program_id,
+        VaultItem.user_id == current_user.id
+    ).first()
+
+    if not workout:
+        raise HTTPException(status_code=404, detail="Workout program not found in vault")
+
+    current_user.active_workout_program_id = program_id
+    db.commit()
+
+    return {
+        "message":      "Workout program activated",
+        "program_id":   program_id,
+        "program_name": (workout.content or {}).get("name", "Workout Program")
+    }
+
+
+@router.patch("/programs/deactivate")
+async def deactivate_workout_program(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    current_user.active_workout_program_id = None
+    db.commit()
+    return {"message": "Workout program deactivated"}
+
+
+# ============================================================================
 # STATISTICS & INSIGHTS
 # ============================================================================
 
@@ -473,12 +466,7 @@ async def get_weekly_stats(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """
-    Get workout statistics for the current week.
-    Used for Smart Today Card.
-    """
     from datetime import timedelta
-
     week_ago = datetime.utcnow() - timedelta(days=7)
 
     sessions = db.query(WorkoutSession).filter(
@@ -488,15 +476,15 @@ async def get_weekly_stats(
     ).all()
 
     total_workouts = len(sessions)
-    total_minutes = sum(s.duration_minutes for s in sessions if s.duration_minutes)
+    total_minutes  = sum(s.duration_minutes for s in sessions if s.duration_minutes)
     total_exercises = sum(s.completed_exercises_count for s in sessions)
 
     return {
-        "total_workouts": total_workouts,
-        "total_minutes": total_minutes,
+        "total_workouts":  total_workouts,
+        "total_minutes":   total_minutes,
         "total_exercises": total_exercises,
-        "avg_duration": total_minutes / total_workouts if total_workouts > 0 else 0,
-        "adherence_rate": sum(
+        "avg_duration":    total_minutes / total_workouts if total_workouts > 0 else 0,
+        "adherence_rate":  sum(
             s.completed_exercises_count / s.planned_exercises_count
             for s in sessions if s.planned_exercises_count > 0
         ) / total_workouts if total_workouts > 0 else 0
@@ -508,13 +496,7 @@ async def get_weekly_stats(
 # ============================================================================
 
 async def generate_ai_feedback(session: WorkoutSession) -> str:
-    """
-    Generate AI feedback based on workout session data.
-    TODO: Integrate with your AI system (Central?)
-    """
-    # Analyze session data
     adherence = session.completed_exercises_count / session.planned_exercises_count
-
     feedback_parts = []
 
     if adherence >= 0.9:
@@ -524,7 +506,6 @@ async def generate_ai_feedback(session: WorkoutSession) -> str:
     else:
         feedback_parts.append("You skipped several exercises today. Everything okay?")
 
-    # Check for form issues
     poor_form_count = sum(
         1 for log in session.exercise_logs
         if log.form_quality in ["poor", "needs_correction"]

@@ -32,6 +32,7 @@ class DietPlanCreate(BaseModel):
     target_carbs: float
     target_fats: float
     meals_per_day: int = 3
+    is_active: bool = True
     dietary_restrictions: Optional[List[str]] = []
     allergies: Optional[List[str]] = []
     notes: Optional[str] = None
@@ -217,6 +218,27 @@ async def activate_diet_plan(
     db.commit()
 
     return {"message": "Diet plan activated", "plan_id": plan_id}
+
+
+@router.patch("/plans/deactivate")
+async def deactivate_diet_plan(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Clear the user's active diet plan.
+    Home card will show 'Not Set' state.
+    """
+    # Deactivate all plans
+    db.query(DietPlan).filter(
+        DietPlan.user_id == current_user.id
+    ).update({"is_active": False})
+
+    # Clear pointer on user
+    current_user.active_diet_plan_id = None
+    db.commit()
+
+    return {"message": "Diet plan deactivated"}
 
 
 # ============================================================================

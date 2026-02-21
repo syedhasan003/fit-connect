@@ -105,8 +105,9 @@ class WorkoutSession(Base):
     planned_exercises_count = deferred(Column(Integer, nullable=False, default=0))
     completed_exercises_count = deferred(Column(Integer, nullable=False, default=0))
     skipped_exercises_count = deferred(Column(Integer, nullable=False, default=0))
-    energy_level_start = deferred(Column(SQLEnum(EnergyLevel), nullable=True))
-    energy_level_end = deferred(Column(SQLEnum(EnergyLevel), nullable=True))
+    # ✅ FIXED: Use plain String instead of SQLEnum to avoid LookupError on bad data
+    energy_level_start = deferred(Column(String(50), nullable=True))
+    energy_level_end = deferred(Column(String(50), nullable=True))
     soreness_level_start = deferred(Column(Integer, nullable=True))
     soreness_level_end = deferred(Column(Integer, nullable=True))
     notes = deferred(Column(Text, nullable=True))
@@ -201,6 +202,9 @@ class DietPlan(Base):
     name = Column(String(255), nullable=False)
     goal_type = Column(SQLEnum(GoalType), nullable=False)
     is_active = Column(Boolean, nullable=False, default=True)
+
+    # Deferred columns (added by migration)
+    status = deferred(Column(String(50), nullable=True, default="pending"))
 
     # Deferred columns (don't exist in DB yet)
     start_date = deferred(Column(Date, nullable=False))

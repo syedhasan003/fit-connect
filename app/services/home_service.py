@@ -7,7 +7,7 @@ from app.models.workout_log import WorkoutLog
 from app.models.reminder import Reminder
 from app.models.reminder_log import ReminderLog
 from app.models.evaluator_state import EvaluatorState
-from app.models.fitness_tracking import WorkoutSession, MealLog, DietPlan
+from app.models.fitness_tracking import WorkoutSession, MealLog, DietPlan, SessionStatus
 
 
 class HomeService:
@@ -120,9 +120,9 @@ class HomeService:
             return "pending"
 
         # Return status based on session status
-        if session.status.value == "COMPLETED":
+        if session.status.value == "completed":
             return "completed"
-        elif session.status.value == "IN_PROGRESS":
+        elif session.status.value == "in_progress":
             return "in_progress"
         else:
             return "pending"
@@ -147,16 +147,16 @@ class HomeService:
             .first()
         )
 
-        target_calories = diet_plan.daily_calories if diet_plan else 2000
-        target_protein = diet_plan.daily_protein if diet_plan else 150
+        target_calories = diet_plan.target_calories if diet_plan else 2000
+        target_protein = diet_plan.target_protein if diet_plan else 150
 
         # Get today's meal logs and sum up the macros
         meals = (
             db.query(
-                func.sum(MealLog.calories).label('total_calories'),
-                func.sum(MealLog.protein).label('total_protein'),
-                func.sum(MealLog.carbs).label('total_carbs'),
-                func.sum(MealLog.fats).label('total_fats'),
+                func.sum(MealLog.total_calories).label('total_calories'),
+                func.sum(MealLog.total_protein).label('total_protein'),
+                func.sum(MealLog.total_carbs).label('total_carbs'),
+                func.sum(MealLog.total_fats).label('total_fats'),
             )
             .filter(
                 MealLog.user_id == user.id,
@@ -204,7 +204,7 @@ class HomeService:
             .filter(
                 WorkoutSession.user_id == user.id,
                 WorkoutSession.started_at >= start_date,
-                WorkoutSession.status == "COMPLETED"
+                WorkoutSession.status == SessionStatus.COMPLETED
             )
             .all()
         )
