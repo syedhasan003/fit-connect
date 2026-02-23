@@ -256,6 +256,8 @@ export default function DietBuilder() {
         console.warn("Vault mirror failed (non-fatal):", vaultErr);
       }
 
+      // ── 6. Navigate to vault on success ────────────────────────────────────
+      navigate("/vault/diets", { state: { savedPlan: planName.trim() } });
       return planId;
     } catch (error) {
       console.error("Failed to save diet plan:", error);

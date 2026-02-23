@@ -493,49 +493,16 @@ export default function MealLogging() {
     };
 
     try {
-      const result = await logMeal(payload);
-      // result is the full MealLog from backend
-      setTodayMealLogs((prev) => {
-        // Replace if a log for this meal already existed, else append
-        const existing = prev.findIndex((l) => l.meal_name?.toLowerCase() === mealTime?.toLowerCase());
-        if (existing >= 0) {
-          // Merge: keep old + add new foods, sum totals (fresh load approach)
-          const updated = [...prev];
-          updated[existing] = {
-            ...updated[existing],
-            foods_eaten: [...(updated[existing].foods_eaten || []), ...foodsEaten],
-            total_calories: (updated[existing].total_calories || 0) + (result.total_calories || 0),
-            total_protein: (updated[existing].total_protein || 0) + (result.total_protein || 0),
-            total_carbs: (updated[existing].total_carbs || 0) + (result.total_carbs || 0),
-            total_fats: (updated[existing].total_fats || 0) + (result.total_fats || 0),
-          };
-          return updated;
-        }
-        return [...prev, {
-          id: result.id || Date.now(),
-          meal_name: mealTime,
-          meal_template_id: templateId,
-          foods_eaten: foodsEaten,
-          total_calories: result.total_calories || foodsEaten.reduce((s, f) => s + f.calories, 0),
-          total_protein: result.total_protein || foodsEaten.reduce((s, f) => s + f.protein, 0),
-          total_carbs: result.total_carbs || foodsEaten.reduce((s, f) => s + f.carbs, 0),
-          total_fats: result.total_fats || foodsEaten.reduce((s, f) => s + f.fats, 0),
-        }];
-      });
+      await logMeal(payload);
+      // Re-fetch from backend so state exactly matches what was persisted
+      const freshData = await getTodaysMeals().catch(() => null);
+      if (freshData?.meals) {
+        setTodayMealLogs(freshData.meals);
+      }
       setEnergyCapture({ mealName });
     } catch (err) {
       console.error('logMeal error:', err);
-      // Optimistic update anyway
-      setTodayMealLogs((prev) => [...prev, {
-        id: Date.now(),
-        meal_name: mealTime,
-        foods_eaten: foodsEaten,
-        total_calories: foodsEaten.reduce((s, f) => s + f.calories, 0),
-        total_protein: foodsEaten.reduce((s, f) => s + f.protein, 0),
-        total_carbs: foodsEaten.reduce((s, f) => s + f.carbs, 0),
-        total_fats: foodsEaten.reduce((s, f) => s + f.fats, 0),
-      }]);
-      setEnergyCapture({ mealName });
+      alert(`Could not save meal: ${err.message || 'Unknown error'}.\n\nMake sure you have an active diet plan set.`);
     }
   };
 

@@ -1,16 +1,26 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import BottomNav from "../../components/navigation/BottomNav";
-import { fetchVaultItems } from "../../api/vault";
-import { getActiveDietPlan, activateDietPlan } from "../../api/diet";
+import { fetchVaultItems, deleteVaultItem } from "../../api/vault";
+import { getActiveDietPlan, activateDietPlan, deleteDietPlan } from "../../api/diet";
 
 export default function DietPlansList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [plans, setPlans] = useState([]);
   const [activePlanId, setActivePlanId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [activating, setActivating] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [toast, setToast] = useState(location.state?.savedPlan ? `"${location.state.savedPlan}" saved!` : null);
+
+  // Auto-dismiss toast
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   useEffect(() => {
     load();
@@ -48,12 +58,48 @@ export default function DietPlansList() {
     }
   };
 
+  const handleDelete = async (plan) => {
+    const confirmed = window.confirm(`Delete "${plan.title}"? This cannot be undone.`);
+    if (!confirmed) return;
+    setDeleting(plan.id);
+    try {
+      // Delete vault entry
+      await deleteVaultItem(plan.id);
+      // Also delete the underlying diet plan if we have its ID
+      const planId = plan.content?.planId;
+      if (planId) {
+        try { await deleteDietPlan(planId); } catch (_) { /* non-fatal */ }
+      }
+      // Remove from list instantly
+      setPlans((prev) => prev.filter((p) => p.id !== plan.id));
+      setToast(`🗑️ "${plan.title}" deleted`);
+    } catch (err) {
+      alert("Failed to delete: " + (err.message || "Unknown error"));
+    } finally {
+      setDeleting(null);
+    }
+  };
+
   const filtered = plans.filter((p) =>
     p.title?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
     <div style={{ minHeight: "100vh", background: "#000", color: "#fff", paddingBottom: 100 }}>
+      {/* Toast */}
+      {toast && (
+        <div style={{
+          position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)",
+          background: "rgba(17,24,39,0.95)", border: "1px solid rgba(255,255,255,0.12)",
+          backdropFilter: "blur(12px)", borderRadius: 14, padding: "12px 24px",
+          fontSize: 14, fontWeight: 600, color: "#fff", zIndex: 1000,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+          animation: "slideDown 0.3s ease",
+          whiteSpace: "nowrap",
+        }}>
+          {toast}
+        </div>
+      )}
       <div style={{ padding: "24px 20px" }}>
         {/* Header */}
         <div style={{ marginBottom: 28 }}>
@@ -111,8 +157,10 @@ export default function DietPlansList() {
                 plan={plan}
                 isActive={plan.content?.planId === activePlanId}
                 activating={activating === plan.id}
+                deleting={deleting === plan.id}
                 onSetActive={() => handleSetActive(plan)}
                 onLog={() => navigate("/meal-logging")}
+                onDelete={() => handleDelete(plan)}
               />
             ))}
           </div>
@@ -123,7 +171,7 @@ export default function DietPlansList() {
   );
 }
 
-function DietPlanCard({ plan, isActive, activating, onSetActive, onLog }) {
+function DietPlanCard({ plan, isActive, activating, deleting, onSetActive, onLog, onDelete }) {
   const [hover, setHover] = useState(false);
   const content = typeof plan.content === "string" ? JSON.parse(plan.content) : plan.content;
   const accentColor = "#ec4899";
@@ -143,12 +191,13 @@ function DietPlanCard({ plan, isActive, activating, onSetActive, onLog }) {
         border: isActive
           ? "1px solid rgba(236,72,153,0.5)"
           : "1px solid rgba(255,255,255,0.06)",
+        opacity: deleting ? 0.5 : 1,
       }}
     >
       {/* Active pill */}
       {isActive && (
         <div style={{
-          position: "absolute", top: 14, right: 14,
+          position: "absolute", top: 14, right: 44,
           padding: "4px 10px", borderRadius: 20,
           background: "rgba(0,255,136,0.15)", border: "1px solid rgba(0,255,136,0.3)",
           fontSize: 11, fontWeight: 700, color: "#00ff88",
@@ -157,7 +206,27 @@ function DietPlanCard({ plan, isActive, activating, onSetActive, onLog }) {
         </div>
       )}
 
-      <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 600 }}>
+      {/* Delete button (top-right) */}
+      <button
+        onClick={onDelete}
+        disabled={deleting}
+        title="Delete plan"
+        style={{
+          position: "absolute", top: 12, right: 12,
+          background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: 8, width: 28, height: 28,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: deleting ? "default" : "pointer",
+          color: "rgba(255,255,255,0.4)", fontSize: 14, lineHeight: 1,
+          transition: "all 0.2s",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.2)"; e.currentTarget.style.borderColor = "rgba(239,68,68,0.4)"; e.currentTarget.style.color = "#ef4444"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}
+      >
+        {deleting ? "…" : "✕"}
+      </button>
+
+      <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 600, paddingRight: 80 }}>
         {plan.title || "Untitled Plan"}
       </h3>
       <p style={{ margin: "0 0 14px", fontSize: 13, color: "rgba(255,255,255,0.45)" }}>
@@ -235,7 +304,7 @@ function LoadingState() {
         borderRadius: "50%", animation: "spin 1s linear infinite",
       }} />
       <p style={{ fontSize: 15, color: "rgba(255,255,255,0.6)" }}>Loading plans...</p>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes slideDown { from { opacity: 0; transform: translateX(-50%) translateY(-10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }`}</style>
     </div>
   );
 }

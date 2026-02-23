@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "../../components/navigation/BottomNav";
 import ProfileDropdown from "../../components/ProfileDropdown";
@@ -14,8 +14,14 @@ export default function Home() {
   const [error, setError] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
+  // Refetch whenever the tab becomes visible again (handles back-navigation from meal logging)
   useEffect(() => {
     loadData();
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") loadData();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, []);
 
   const loadData = async () => {
@@ -397,7 +403,7 @@ function TodayCard({ data, navigate, user }) {
     switch (status) {
       case "completed":
         return {
-          value: `${calories.logged}/${calories.target} cal ✅`,
+          value: `${calories.logged}/${calories.target} cal`,
           status: "success",
           icon: "✅"
         };
