@@ -39,8 +39,32 @@ def run_migrations():
         ("diet_plans",  "dietary_restrictions",  "ALTER TABLE diet_plans ADD COLUMN dietary_restrictions JSON DEFAULT '[]'"),
         ("diet_plans",  "allergies",             "ALTER TABLE diet_plans ADD COLUMN allergies JSON DEFAULT '[]'"),
         ("diet_plans",  "notes",                 "ALTER TABLE diet_plans ADD COLUMN notes TEXT"),
-        # meal_logs new column
+        # meal_logs — columns that may have been added after initial DB creation
         ("meal_logs",        "meal_name",             "ALTER TABLE meal_logs ADD COLUMN meal_name VARCHAR(100)"),
+        ("meal_logs",        "planned_time",          "ALTER TABLE meal_logs ADD COLUMN planned_time TIME"),
+        ("meal_logs",        "time_deviation_minutes","ALTER TABLE meal_logs ADD COLUMN time_deviation_minutes INTEGER"),
+        ("meal_logs",        "followed_plan",         "ALTER TABLE meal_logs ADD COLUMN followed_plan BOOLEAN NOT NULL DEFAULT 1"),
+        ("meal_logs",        "deviation_reason",      "ALTER TABLE meal_logs ADD COLUMN deviation_reason TEXT"),
+        ("meal_logs",        "foods_eaten",           "ALTER TABLE meal_logs ADD COLUMN foods_eaten JSON"),
+        ("meal_logs",        "total_calories",        "ALTER TABLE meal_logs ADD COLUMN total_calories INTEGER NOT NULL DEFAULT 0"),
+        ("meal_logs",        "total_protein",         "ALTER TABLE meal_logs ADD COLUMN total_protein FLOAT NOT NULL DEFAULT 0"),
+        ("meal_logs",        "total_carbs",           "ALTER TABLE meal_logs ADD COLUMN total_carbs FLOAT NOT NULL DEFAULT 0"),
+        ("meal_logs",        "total_fats",            "ALTER TABLE meal_logs ADD COLUMN total_fats FLOAT NOT NULL DEFAULT 0"),
+        ("meal_logs",        "energy_level",          "ALTER TABLE meal_logs ADD COLUMN energy_level VARCHAR(20)"),
+        ("meal_logs",        "hunger_level",          "ALTER TABLE meal_logs ADD COLUMN hunger_level VARCHAR(20)"),
+        ("meal_logs",        "mood",                  "ALTER TABLE meal_logs ADD COLUMN mood VARCHAR(20)"),
+        ("meal_logs",        "satisfaction_rating",   "ALTER TABLE meal_logs ADD COLUMN satisfaction_rating INTEGER"),
+        ("meal_logs",        "too_much",              "ALTER TABLE meal_logs ADD COLUMN too_much BOOLEAN NOT NULL DEFAULT 0"),
+        ("meal_logs",        "too_little",            "ALTER TABLE meal_logs ADD COLUMN too_little BOOLEAN NOT NULL DEFAULT 0"),
+        ("meal_logs",        "workout_before",        "ALTER TABLE meal_logs ADD COLUMN workout_before BOOLEAN NOT NULL DEFAULT 0"),
+        ("meal_logs",        "workout_after",         "ALTER TABLE meal_logs ADD COLUMN workout_after BOOLEAN NOT NULL DEFAULT 0"),
+        ("meal_logs",        "ai_suggestion_followed","ALTER TABLE meal_logs ADD COLUMN ai_suggestion_followed BOOLEAN"),
+        ("meal_logs",        "ai_feedback",           "ALTER TABLE meal_logs ADD COLUMN ai_feedback TEXT"),
+
+        # users — columns that may have been added after initial DB creation
+        ("users",            "active_diet_plan_id",   "ALTER TABLE users ADD COLUMN active_diet_plan_id INTEGER"),
+        ("users",            "active_workout_program_id", "ALTER TABLE users ADD COLUMN active_workout_program_id INTEGER"),
+        ("users",            "onboarding_completed",  "ALTER TABLE users ADD COLUMN onboarding_completed BOOLEAN NOT NULL DEFAULT 0"),
 
         # meal_templates — model renamed/added many columns
         # meal_time is an ENUM stored as VARCHAR in SQLite; default 'breakfast' for old rows

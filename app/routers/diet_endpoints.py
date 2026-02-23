@@ -424,9 +424,12 @@ async def log_meal(
     total_fats = sum(f["fats"] for f in data.foods_eaten)
 
     # Create meal log
+    # logged_at is set explicitly (not via server_default) because the original
+    # DB column was created with DEFAULT now() which SQLite doesn't support.
     log = MealLog(
         user_id=current_user.id,
         diet_plan_id=diet_plan.id,
+        logged_at=datetime.utcnow(),
         meal_name=data.meal_name,
         meal_template_id=data.meal_template_id,
         actual_time=data.actual_time,

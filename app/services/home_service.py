@@ -15,8 +15,10 @@ from app.models.fitness_tracking import WorkoutSession, MealLog, DietPlan, Sessi
 class HomeService:
     def build_home(self, db: Session, user: User) -> dict:
         today = date.today()
-        today_start = datetime.combine(today, datetime.min.time())
-        today_end = datetime.combine(today, datetime.max.time())
+        # Use UTC boundaries so they stay consistent with logged_at (stored via datetime.utcnow())
+        _now_utc = datetime.utcnow()
+        today_start = _now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = _now_utc.replace(hour=23, minute=59, second=59, microsecond=999999)
 
         # -------------------------
         # NEW WORKOUT STATUS (using workout_sessions)
