@@ -2,6 +2,8 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, date
 from sqlalchemy import func
 
+_WEEKDAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
 from app.models.user import User
 from app.models.workout_log import WorkoutLog
 from app.models.reminder import Reminder
@@ -96,10 +98,49 @@ class HomeService:
             "quick_actions": ["workout", "diet", "central"]
         }
 
+    def _is_rest_day(self, db: Session, user: User) -> bool:
+        """
+        Returns True when the user's active program uses weekday-chip scheduling
+        AND today has no assigned day — meaning it's a genuine rest day.
+        """
+        if not hasattr(user, 'active_workout_program_id') or not user.active_workout_program_id:
+            return False
+
+        from app.models.vault_item import VaultItem
+        workout = db.query(VaultItem).filter(
+            VaultItem.id == user.active_workout_program_id,
+            VaultItem.user_id == user.id
+        ).first()
+
+        if not workout:
+            return False
+
+        days = (workout.content or {}).get("days", [])
+        if not days:
+            return False
+
+        today_abbr = _WEEKDAY_ABBR[datetime.now().weekday()]   # 0=Mon … 6=Sun
+        weekday_names_lower = {a.lower() for a in _WEEKDAY_ABBR}
+
+        using_weekday_mode = any(
+            (day.get("name") or "").strip().lower() in weekday_names_lower
+            for day in days
+        )
+        if not using_weekday_mode:
+            return False  # Sequential program — never a "rest day" from our side
+
+        # Weekday mode active: check whether today has a matching day
+        for day in days:
+            day_name = (day.get("name") or "").strip()
+            if day_name.lower() == today_abbr.lower():
+                return False  # Today has a workout assigned
+
+        return True  # Weekday mode, no match → rest day
+
     def _get_workout_status(self, db: Session, user: User, today_start: datetime, today_end: datetime) -> str:
         """
         Get today's workout status based on workout_sessions table.
-        Returns: "completed", "in_progress", "pending", or "not_set"
+        Returns: "completed", "in_progress", "rest_day", "pending", or "not_set"
         """
         # Check if user has an active workout program
         if not hasattr(user, 'active_workout_program_id') or not user.active_workout_program_id:
@@ -117,6 +158,9 @@ class HomeService:
         )
 
         if not session:
+            # No session yet — could be a rest day or just not done yet
+            if self._is_rest_day(db, user):
+                return "rest_day"
             return "pending"
 
         # Return status based on session status

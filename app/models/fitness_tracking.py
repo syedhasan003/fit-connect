@@ -279,6 +279,7 @@ class MealLog(Base):
     # ✅ SQLITE COMPATIBLE
     logged_at = Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP'), index=True)
 
+    meal_name = Column(String(100), nullable=True)  # "breakfast", "lunch", "dinner", "snack", custom
     planned_time = Column(Time, nullable=True)
     actual_time = Column(Time, nullable=True)
     time_deviation_minutes = Column(Integer, nullable=True)

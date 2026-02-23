@@ -13,6 +13,9 @@ from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
 
+# Short weekday abbreviations matching the WorkoutBuilder chips
+_WEEKDAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
 from app.db.database import get_db
 from app.models.fitness_tracking import (
     WorkoutSession, ExerciseLog, SessionStatus,
@@ -151,32 +154,72 @@ async def get_next_workout_day(
     if not days or len(days) == 0:
         raise HTTPException(status_code=400, detail="This workout program has no days/exercises configured")
 
-    last_session = db.query(WorkoutSession).filter(
-        WorkoutSession.user_id == current_user.id,
-        WorkoutSession.status == SessionStatus.COMPLETED
-    ).order_by(WorkoutSession.started_at.desc()).first()
-
     total_days = len(days)
 
-    if not last_session:
-        next_day_number = 1
+    # Fix: vault stores program name under "workoutName", not "name"
+    program_name = (
+        workout_data.get("workoutName")
+        or workout_data.get("name")
+        or workout.title
+        or "Workout Program"
+    )
+
+    # ── 1. Real-time weekday matching ────────────────────────────────────────
+    # If the user assigned weekday chips (Mon/Tue/…/Sun) to their days, serve
+    # today's matching day automatically.  This works entirely with SQLite —
+    # no Redis/Postgres needed.
+    today_abbr = _WEEKDAY_ABBR[datetime.now().weekday()]   # 0=Mon … 6=Sun
+    weekday_names_lower = {a.lower() for a in _WEEKDAY_ABBR}
+
+    # Detect whether the user is using weekday-chip scheduling at all
+    using_weekday_mode = any(
+        (day.get("name") or "").strip().lower() in weekday_names_lower
+        for day in days
+    )
+
+    weekday_match_index = None
+    for i, day in enumerate(days):
+        day_name = (day.get("name") or "").strip()
+        if day_name.lower() == today_abbr.lower():
+            weekday_match_index = i
+            break
+
+    if weekday_match_index is not None:
+        # ✅ A day is assigned to today — serve it directly
+        day_index = weekday_match_index
+        next_day_number = day_index + 1
+
+    elif using_weekday_mode:
+        # ── 2. User uses weekday chips but today has no workout → Rest Day ──
+        # Return a special rest_day marker instead of silently cycling forward.
+        return {
+            "rest_day":     True,
+            "program_id":   workout.id,
+            "program_name": program_name,
+            "day_name":     "Rest Day",
+            "matched_today": False,
+        }
+
     else:
+        # ── 3. Fallback: sequential cycling (no weekday chips used at all) ──
         completed_count = db.query(WorkoutSession).filter(
             WorkoutSession.user_id == current_user.id,
             WorkoutSession.status == SessionStatus.COMPLETED
         ).count()
         next_day_number = (completed_count % total_days) + 1
+        day_index = next_day_number - 1
 
-    day_index = next_day_number - 1
-    next_day = days[day_index]
+    next_day  = days[day_index]
     exercises = _flatten_exercises(next_day)
 
     return {
-        "program_id":   workout.id,
-        "program_name": workout_data.get("name", "Workout Program"),
-        "day_number":   next_day_number,
-        "day_name":     next_day.get("name", f"Day {next_day_number}"),
-        "exercises":    exercises,
+        "program_id":    workout.id,
+        "program_name":  program_name,
+        "day_number":    next_day_number,
+        "day_name":      next_day.get("name", f"Day {next_day_number}"),
+        "exercises":     exercises,
+        "matched_today": weekday_match_index is not None,
+        "rest_day":      False,
     }
 
 

@@ -33,6 +33,9 @@ class DietPlanCreate(BaseModel):
     target_fats: float
     meals_per_day: int = 3
     is_active: bool = True
+    # Optional rest-day / training-day calorie splits
+    rest_day_calories: Optional[int] = None
+    workout_day_calories: Optional[int] = None
     dietary_restrictions: Optional[List[str]] = []
     allergies: Optional[List[str]] = []
     notes: Optional[str] = None
@@ -48,6 +51,8 @@ class DietPlanResponse(BaseModel):
     target_carbs: float
     target_fats: float
     meals_per_day: int
+    rest_day_calories: Optional[int] = None
+    workout_day_calories: Optional[int] = None
     start_date: date
     created_at: datetime
 
@@ -78,6 +83,7 @@ class MealTemplateCreate(BaseModel):
 
 
 class MealLogCreate(BaseModel):
+    meal_name: Optional[str] = None  # "breakfast", "lunch", "dinner", "snack", or custom
     meal_template_id: Optional[int] = None
     actual_time: Optional[str] = None
     foods_eaten: List[dict]  # [{name, grams, calories, protein, carbs, fats}]
@@ -141,6 +147,8 @@ async def create_diet_plan(
         target_carbs=data.target_carbs,
         target_fats=data.target_fats,
         meals_per_day=data.meals_per_day,
+        rest_day_calories=data.rest_day_calories,
+        workout_day_calories=data.workout_day_calories,
         dietary_restrictions=data.dietary_restrictions,
         allergies=data.allergies,
         notes=data.notes
@@ -239,6 +247,52 @@ async def deactivate_diet_plan(
     db.commit()
 
     return {"message": "Diet plan deactivated"}
+
+
+@router.get("/plans/{plan_id}", response_model=DietPlanResponse)
+async def get_diet_plan_by_id(
+    plan_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Get a single diet plan by ID."""
+    plan = db.query(DietPlan).filter(
+        DietPlan.id == plan_id,
+        DietPlan.user_id == current_user.id
+    ).first()
+
+    if not plan:
+        raise HTTPException(status_code=404, detail="Diet plan not found")
+
+    return plan
+
+
+@router.delete("/plans/{plan_id}")
+async def delete_diet_plan(
+    plan_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Delete a diet plan and all its meal templates.
+    If it was the active plan, clears the user's active_diet_plan_id.
+    """
+    plan = db.query(DietPlan).filter(
+        DietPlan.id == plan_id,
+        DietPlan.user_id == current_user.id
+    ).first()
+
+    if not plan:
+        raise HTTPException(status_code=404, detail="Diet plan not found")
+
+    # Clear active pointer if this was the active plan
+    if current_user.active_diet_plan_id == plan_id:
+        current_user.active_diet_plan_id = None
+
+    db.delete(plan)
+    db.commit()
+
+    return {"message": "Diet plan deleted", "plan_id": plan_id}
 
 
 # ============================================================================
@@ -372,6 +426,7 @@ async def log_meal(
     log = MealLog(
         user_id=current_user.id,
         diet_plan_id=diet_plan.id,
+        meal_name=data.meal_name,
         meal_template_id=data.meal_template_id,
         actual_time=data.actual_time,
         foods_eaten=data.foods_eaten,
@@ -393,9 +448,43 @@ async def log_meal(
     db.commit()
     db.refresh(log)
 
-    # TODO: Update food preferences based on this log
-    # TODO: Trigger pattern detection
-    # TODO: Generate AI feedback if deviation detected
+    # ── Update FoodPreference for each food eaten ─────────────────────────────
+    for food_item in data.foods_eaten:
+        food_name = food_item.get("name", "")
+        food_category = food_item.get("category")
+        if not food_name:
+            continue
+
+        pref = db.query(FoodPreference).filter(
+            FoodPreference.user_id == current_user.id,
+            FoodPreference.food_name == food_name
+        ).first()
+
+        if pref:
+            pref.times_eaten += 1
+            pref.last_observed = datetime.utcnow()
+            # Rolling average satisfaction if provided
+            if data.satisfaction_rating is not None:
+                if pref.avg_satisfaction_rating is not None:
+                    pref.avg_satisfaction_rating = (
+                        (pref.avg_satisfaction_rating * (pref.times_eaten - 1) + data.satisfaction_rating)
+                        / pref.times_eaten
+                    )
+                else:
+                    pref.avg_satisfaction_rating = float(data.satisfaction_rating)
+        else:
+            pref = FoodPreference(
+                user_id=current_user.id,
+                food_name=food_name,
+                food_category=food_category,
+                times_eaten=1,
+                avg_satisfaction_rating=float(data.satisfaction_rating) if data.satisfaction_rating else None,
+                first_observed=datetime.utcnow(),
+                last_observed=datetime.utcnow()
+            )
+            db.add(pref)
+
+    db.commit()
 
     return log
 
@@ -430,8 +519,31 @@ async def get_todays_meals(
         DietPlan.is_active == True
     ).first()
 
+    # Resolve meal_name from template when not explicitly set
+    serialized_logs = []
+    for log in logs:
+        meal_name = log.meal_name
+        if not meal_name and log.meal_template_id:
+            tmpl = db.query(MealTemplate).filter(MealTemplate.id == log.meal_template_id).first()
+            if tmpl:
+                meal_name = tmpl.meal_time
+        serialized_logs.append({
+            "id": log.id,
+            "meal_name": meal_name or "extra",
+            "meal_template_id": log.meal_template_id,
+            "foods_eaten": log.foods_eaten or [],
+            "total_calories": log.total_calories,
+            "total_protein": log.total_protein,
+            "total_carbs": log.total_carbs,
+            "total_fats": log.total_fats,
+            "followed_plan": log.followed_plan,
+            "energy_level": log.energy_level.value if log.energy_level else None,
+            "hunger_level": log.hunger_level.value if log.hunger_level else None,
+            "logged_at": log.logged_at.isoformat() if log.logged_at else None,
+        })
+
     return {
-        "meals": logs,
+        "meals": serialized_logs,
         "totals": {
             "calories": total_calories,
             "protein": total_protein,
