@@ -1,762 +1,641 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { searchFoods, logMeal, getTodaysMeals } from '../../api/diet';
-import { getUserProfile } from '../../api/user';
+import {
+  searchFoods,
+  getPopularFoods,
+  logMeal,
+  getTodaysMeals,
+  getActiveDietPlan,
+  getPlanMeals,
+} from '../../api/diet';
 
-export default function MealLogging() {
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [dietPlan, setDietPlan] = useState(null);
-  const [todaysMeals, setTodaysMeals] = useState([]);
-  const [showFoodSearch, setShowFoodSearch] = useState(false);
-  const [currentMeal, setCurrentMeal] = useState(null);
+// ─── MACRO BAR ────────────────────────────────────────────────────────────────
+function MacroBar({ label, current, target, color }) {
+  const pct = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+  const over = current > target && target > 0;
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+        <span style={{ fontSize: 12, color: '#aaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          {label}
+        </span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: over ? '#ff6b6b' : '#fff' }}>
+          {current}{label !== 'Kcal' ? 'g' : ''} / {target}{label !== 'Kcal' ? 'g' : ' kcal'}
+        </span>
+      </div>
+      <div style={{ height: 8, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden' }}>
+        <div style={{
+          height: '100%', width: `${pct}%`, backgroundColor: over ? '#ff6b6b' : color,
+          borderRadius: 4, transition: 'width 0.4s ease',
+        }} />
+      </div>
+    </div>
+  );
+}
 
-  // Targets
-  const [targetCalories, setTargetCalories] = useState(2000);
-  const [targetProtein, setTargetProtein] = useState(150);
+// ─── ENERGY CAPTURE OVERLAY ───────────────────────────────────────────────────
+function EnergyCapture({ mealName, onSubmit }) {
+  const [energy, setEnergy] = useState(null);
+  const [hunger, setHunger] = useState(null);
+  const canSubmit = energy && hunger;
 
-  // Totals
-  const [totalCalories, setTotalCalories] = useState(0);
-  const [totalProtein, setTotalProtein] = useState(0);
-  const [totalCarbs, setTotalCarbs] = useState(0);
-  const [totalFats, setTotalFats] = useState(0);
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.93)',
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', zIndex: 2000, padding: 24,
+    }}>
+      <div style={{
+        background: '#1a1a1a', borderRadius: 24, padding: 32,
+        width: '100%', maxWidth: 400, border: '1px solid #2a2a2a',
+      }}>
+        <h2 style={{ fontSize: 22, fontWeight: 700, textAlign: 'center', marginBottom: 6 }}>
+          {mealName} logged!
+        </h2>
+        <p style={{ fontSize: 14, color: '#888', textAlign: 'center', marginBottom: 28 }}>
+          Quick check-in — 5 seconds
+        </p>
+
+        <p style={{ fontSize: 13, color: '#aaa', marginBottom: 10, fontWeight: 600 }}>
+          Energy level right now?
+        </p>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 24 }}>
+          {[{ l: 'Low', v: 'low', c: '#ff6b6b' }, { l: 'Normal', v: 'normal', c: '#ffd93d' }, { l: 'High', v: 'high', c: '#00d4ff' }].map((x) => (
+            <button key={x.v} onClick={() => setEnergy(x.v)} style={{
+              flex: 1, padding: '12px 0', borderRadius: 10, border: 'none', cursor: 'pointer',
+              fontWeight: 700, fontSize: 14,
+              backgroundColor: energy === x.v ? x.c : '#2a2a2a',
+              color: energy === x.v ? '#0a0a0a' : '#aaa', transition: 'all 0.2s',
+            }}>{x.l}</button>
+          ))}
+        </div>
+
+        <p style={{ fontSize: 13, color: '#aaa', marginBottom: 10, fontWeight: 600 }}>
+          How full are you?
+        </p>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 28 }}>
+          {[{ l: 'Hungry', v: 'hungry', c: '#ff6b6b' }, { l: 'Satisfied', v: 'satisfied', c: '#00ff88' }, { l: 'Stuffed', v: 'stuffed', c: '#ffd93d' }].map((x) => (
+            <button key={x.v} onClick={() => setHunger(x.v)} style={{
+              flex: 1, padding: '12px 0', borderRadius: 10, border: 'none', cursor: 'pointer',
+              fontWeight: 700, fontSize: 13,
+              backgroundColor: hunger === x.v ? x.c : '#2a2a2a',
+              color: hunger === x.v ? '#0a0a0a' : '#aaa', transition: 'all 0.2s',
+            }}>{x.l}</button>
+          ))}
+        </div>
+
+        <button onClick={() => canSubmit && onSubmit(energy, hunger)} disabled={!canSubmit} style={{
+          width: '100%', padding: 16, borderRadius: 12, border: 'none',
+          cursor: canSubmit ? 'pointer' : 'default',
+          backgroundColor: canSubmit ? '#00d4ff' : '#2a2a2a',
+          color: canSubmit ? '#0a0a0a' : '#555', fontSize: 16, fontWeight: 700,
+        }}>Done</button>
+        <button onClick={() => onSubmit(null, null)} style={{
+          width: '100%', padding: '10px', marginTop: 10, background: 'none',
+          border: 'none', color: '#555', fontSize: 13, cursor: 'pointer',
+        }}>Skip</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── FOOD SEARCH MODAL ────────────────────────────────────────────────────────
+function FoodSearchModal({ mealName, initialBasket = [], onClose, onConfirm }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [popular, setPopular] = useState([]);
+  const [searching, setSearching] = useState(false);
+  // basket item: { food: {id, name, cal100, p100, c100, f100}, grams }
+  const [basket, setBasket] = useState(initialBasket);
 
   useEffect(() => {
-    loadMealData();
+    getPopularFoods(20).then((f) => setPopular(f || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
-    // Recalculate totals when meals change
-    const calories = todaysMeals.reduce((sum, m) => sum + (m.calories || 0), 0);
-    const protein = todaysMeals.reduce((sum, m) => sum + (m.protein || 0), 0);
-    const carbs = todaysMeals.reduce((sum, m) => sum + (m.carbs || 0), 0);
-    const fats = todaysMeals.reduce((sum, m) => sum + (m.fats || 0), 0);
+    if (query.trim().length < 2) { setResults([]); return; }
+    const t = setTimeout(async () => {
+      setSearching(true);
+      try { setResults((await searchFoods(query, 25)) || []); }
+      catch { setResults([]); }
+      finally { setSearching(false); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query]);
 
-    setTotalCalories(calories);
-    setTotalProtein(protein);
-    setTotalCarbs(carbs);
-    setTotalFats(fats);
-  }, [todaysMeals]);
+  const addFood = (rawFood) => {
+    // rawFood from search: calories_per_100g, protein_per_100g, etc.
+    // Normalize to our basket food shape
+    const food = {
+      id: rawFood.id,
+      name: rawFood.name,
+      cal100: rawFood.calories_per_100g ?? rawFood.calories ?? 0,
+      p100: rawFood.protein_per_100g ?? rawFood.protein ?? 0,
+      c100: rawFood.carbs_per_100g ?? rawFood.carbs ?? 0,
+      f100: rawFood.fats_per_100g ?? rawFood.fats ?? 0,
+    };
+    if (basket.find((b) => b.food.id === food.id)) return;
+    setBasket((prev) => [...prev, { food, grams: rawFood.common_serving_grams || 100 }]);
+    setQuery(''); setResults([]);
+  };
 
-  const loadMealData = async () => {
+  const remove = (id) => setBasket((b) => b.filter((x) => x.food.id !== id));
+  const setGrams = (id, v) => setBasket((b) => b.map((x) => x.food.id === id ? { ...x, grams: v } : x));
+
+  const total = basket.reduce((acc, { food, grams }) => {
+    const m = parseFloat(grams || 0) / 100;
+    return {
+      cal: acc.cal + Math.round(food.cal100 * m),
+      p: acc.p + Math.round(food.p100 * m),
+      c: acc.c + Math.round(food.c100 * m),
+      f: acc.f + Math.round(food.f100 * m),
+    };
+  }, { cal: 0, p: 0, c: 0, f: 0 });
+
+  const list = query.trim().length >= 2 ? results : popular;
+  const listLabel = query.trim().length >= 2 ? null : 'Popular';
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1500 }} onClick={onClose}>
+      <div style={{ backgroundColor: '#141414', borderRadius: '24px 24px 0 0', width: '100%', maxWidth: 600, maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{ padding: '20px 20px 0', flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Add to {mealName}</h2>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#888', fontSize: 22, cursor: 'pointer' }}>✕</button>
+          </div>
+          <input
+            type="text" placeholder="Search roti, dal, chicken..." value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            style={{ width: '100%', padding: '13px 16px', backgroundColor: '#1f1f1f', border: '1px solid #2a2a2a', borderRadius: 12, color: '#fff', fontSize: 15, marginBottom: 12, boxSizing: 'border-box' }}
+            autoFocus
+          />
+        </div>
+
+        {/* Basket */}
+        {basket.length > 0 && (
+          <div style={{ flexShrink: 0, padding: '0 20px 10px' }}>
+            <p style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>In this meal</p>
+            {basket.map(({ food, grams }) => {
+              const m = parseFloat(grams || 0) / 100;
+              const cal = Math.round(food.cal100 * m);
+              return (
+                <div key={food.id} style={{ display: 'flex', alignItems: 'center', gap: 10, backgroundColor: '#1a1a1a', borderRadius: 10, padding: '9px 12px', marginBottom: 6, border: '1px solid #2a2a2a' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{food.name}</div>
+                    <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{cal} kcal · P {Math.round(food.p100 * m)}g</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input type="number" value={grams} onChange={(e) => setGrams(food.id, e.target.value)}
+                      style={{ width: 56, padding: '6px 8px', backgroundColor: '#0a0a0a', border: '1px solid #2a2a2a', borderRadius: 8, color: '#fff', fontSize: 14, fontWeight: 600, textAlign: 'center' }} />
+                    <span style={{ fontSize: 12, color: '#555' }}>g</span>
+                    <button onClick={() => remove(food.id)} style={{ background: 'none', border: 'none', color: '#ff4d4d', fontSize: 16, cursor: 'pointer', padding: '0 4px' }}>✕</button>
+                  </div>
+                </div>
+              );
+            })}
+            {/* Total row */}
+            <div style={{ display: 'flex', gap: 10, marginTop: 8, padding: '7px 12px', backgroundColor: 'rgba(0,212,255,0.07)', borderRadius: 10, border: '1px solid rgba(0,212,255,0.14)' }}>
+              {[['Kcal', total.cal], ['P', `${total.p}g`], ['C', `${total.c}g`], ['F', `${total.f}g`]].map(([l, v]) => (
+                <div key={l} style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, color: '#888' }}>{l}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#00d4ff' }}>{v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Food list */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px' }}>
+          {listLabel && <p style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>{listLabel}</p>}
+          {searching && <p style={{ color: '#888', fontSize: 14, textAlign: 'center', padding: '20px 0' }}>Searching...</p>}
+          {!searching && list.map((food) => {
+            const inBasket = !!basket.find((b) => b.food.id === food.id);
+            const cal = food.calories_per_100g ?? food.calories ?? '?';
+            const p = food.protein_per_100g ?? food.protein ?? '?';
+            const c = food.carbs_per_100g ?? food.carbs ?? '?';
+            const f = food.fats_per_100g ?? food.fats ?? '?';
+            return (
+              <div key={food.id} onClick={() => !inBasket && addFood(food)} style={{
+                padding: 12, borderRadius: 10, marginBottom: 8,
+                cursor: inBasket ? 'default' : 'pointer',
+                backgroundColor: inBasket ? 'rgba(0,255,136,0.05)' : '#1a1a1a',
+                border: inBasket ? '1px solid rgba(0,255,136,0.18)' : '1px solid #2a2a2a',
+                opacity: inBasket ? 0.7 : 1, transition: 'all 0.15s',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{food.name}</div>
+                    <div style={{ fontSize: 12, color: '#888', marginTop: 3 }}>
+                      {cal} kcal · P {p}g · C {c}g · F {f}g per 100g
+                    </div>
+                  </div>
+                  {inBasket
+                    ? <span style={{ fontSize: 12, color: '#00ff88', fontWeight: 600 }}>Added</span>
+                    : <span style={{ fontSize: 20, color: '#555' }}>+</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Confirm */}
+        <div style={{ padding: 20, flexShrink: 0 }}>
+          <button onClick={() => basket.length > 0 && onConfirm(basket)} disabled={basket.length === 0} style={{
+            width: '100%', padding: 16, borderRadius: 14, border: 'none',
+            backgroundColor: basket.length > 0 ? '#00d4ff' : '#2a2a2a',
+            color: basket.length > 0 ? '#0a0a0a' : '#555',
+            fontSize: 16, fontWeight: 700, cursor: basket.length > 0 ? 'pointer' : 'default',
+          }}>
+            {basket.length > 0 ? `Log ${basket.length} item${basket.length > 1 ? 's' : ''}` : 'Add foods above'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MEAL CARD ────────────────────────────────────────────────────────────────
+function MealCard({ mealTime, template, mealLog, onLogFromTemplate, onModify, onAddFreeForm }) {
+  const displayName = mealTime.charAt(0).toUpperCase() + mealTime.slice(1);
+  const isLogged = !!mealLog;
+  const templateFoods = template?.foods || [];
+  const loggedFoods = mealLog?.foods_eaten || [];
+
+  return (
+    <div style={{
+      backgroundColor: '#141414', borderRadius: 20, marginBottom: 16,
+      border: isLogged ? '1px solid rgba(0,255,136,0.2)' : '1px solid #1e1e1e',
+      overflow: 'hidden', transition: 'border-color 0.3s',
+    }}>
+      <div style={{ padding: '18px 18px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>{displayName}</h3>
+            {isLogged && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#00ff88', backgroundColor: 'rgba(0,255,136,0.12)', padding: '2px 8px', borderRadius: 20 }}>
+                Logged
+              </span>
+            )}
+          </div>
+          {isLogged ? (
+            <p style={{ fontSize: 13, color: '#00ff88', margin: '4px 0 0', fontWeight: 600 }}>
+              {mealLog.total_calories} kcal eaten
+            </p>
+          ) : templateFoods.length > 0 ? (
+            <p style={{ fontSize: 13, color: '#888', margin: '4px 0 0' }}>
+              Planned: {templateFoods.slice(0, 3).map((f) => f.food_name).join(', ')}
+              {templateFoods.length > 3 ? ` +${templateFoods.length - 3} more` : ''}
+            </p>
+          ) : (
+            <p style={{ fontSize: 13, color: '#555', margin: '4px 0 0' }}>No template set</p>
+          )}
+        </div>
+      </div>
+
+      {/* Logged foods */}
+      {isLogged && loggedFoods.length > 0 && (
+        <div style={{ padding: '0 18px 14px' }}>
+          {loggedFoods.map((item, i) => (
+            <div key={i} style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '7px 10px', backgroundColor: '#1a1a1a', borderRadius: 10,
+              marginBottom: 5, border: '1px solid #222',
+            }}>
+              <div>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{item.name || item.food_name}</span>
+                <span style={{ fontSize: 12, color: '#555', marginLeft: 8 }}>{item.grams || item.serving_size_grams}g</span>
+              </div>
+              <span style={{ fontSize: 12, color: '#aaa' }}>{item.calories} kcal · P{Math.round(item.protein)}g</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Template preview (not yet logged) */}
+      {!isLogged && templateFoods.length > 0 && (
+        <div style={{ padding: '0 18px 14px' }}>
+          {templateFoods.map((tf, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 10px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 8, marginBottom: 5 }}>
+              <span style={{ fontSize: 13, color: '#bbb' }}>{tf.food_name}</span>
+              <span style={{ fontSize: 12, color: '#555' }}>{tf.quantity_grams}g · {tf.calories} kcal</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Action buttons */}
+      {!isLogged ? (
+        <div style={{ padding: '0 18px 18px', display: 'flex', gap: 10 }}>
+          {templateFoods.length > 0 ? (
+            <>
+              <button onClick={() => onLogFromTemplate(mealTime, template)} style={{
+                flex: 1, padding: '12px 0', borderRadius: 12, border: 'none', cursor: 'pointer',
+                backgroundColor: '#00d4ff', color: '#0a0a0a', fontWeight: 700, fontSize: 14,
+              }}>Log This Meal</button>
+              <button onClick={() => onModify(mealTime, template)} style={{
+                padding: '12px 20px', borderRadius: 12, border: '1px solid #2a2a2a',
+                backgroundColor: 'transparent', color: '#aaa', fontWeight: 600, fontSize: 14, cursor: 'pointer',
+              }}>Modify</button>
+            </>
+          ) : (
+            <button onClick={() => onAddFreeForm(displayName)} style={{
+              flex: 1, padding: '12px 0', borderRadius: 12, border: '1px dashed #333',
+              backgroundColor: 'transparent', color: '#888', fontWeight: 600, fontSize: 14, cursor: 'pointer',
+            }}>+ Add Food</button>
+          )}
+        </div>
+      ) : (
+        <div style={{ padding: '0 18px 18px' }}>
+          <button onClick={() => onAddFreeForm(displayName)} style={{
+            padding: '8px 16px', borderRadius: 10, border: '1px solid #2a2a2a',
+            backgroundColor: 'transparent', color: '#666', fontWeight: 500, fontSize: 13, cursor: 'pointer',
+          }}>+ Add more</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── MAIN ─────────────────────────────────────────────────────────────────────
+export default function MealLogging() {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [plan, setPlan] = useState(null);
+  const [templates, setTemplates] = useState([]);
+  // todayMealLogs: array of MealLog objects from the backend
+  // Each has: { id, meal_name, foods_eaten, total_calories, total_protein, total_carbs, total_fats, ... }
+  const [todayMealLogs, setTodayMealLogs] = useState([]);
+
+  const [foodModal, setFoodModal] = useState(null);
+  const [energyCapture, setEnergyCapture] = useState(null);
+
+  // Derived totals from today's logs
+  const totals = todayMealLogs.reduce((acc, l) => ({
+    calories: acc.calories + (l.total_calories || 0),
+    protein: acc.protein + (l.total_protein || 0),
+    carbs: acc.carbs + (l.total_carbs || 0),
+    fats: acc.fats + (l.total_fats || 0),
+  }), { calories: 0, protein: 0, carbs: 0, fats: 0 });
+
+  const targets = {
+    calories: plan?.target_calories || 2000,
+    protein: plan?.target_protein || 150,
+    carbs: plan?.target_carbs || 250,
+    fats: plan?.target_fats || 65,
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const load = async () => {
     try {
       setLoading(true);
-
-      // Get user profile to check for active diet plan
-      const profile = await getUserProfile();
-
-      if (!profile.active_diet_plan_id) {
-        alert('No active diet plan found. Please create and set a diet plan first.');
-        navigate('/diet-builder');
+      const activePlan = await getActiveDietPlan();
+      if (!activePlan) {
+        navigate('/diet-builder', { state: { message: 'Create a diet plan to start logging meals.' } });
         return;
       }
+      setPlan(activePlan);
 
-      // For now, use default targets (we can fetch diet plan details later)
-      // TODO: Fetch actual diet plan to get real targets
-      setTargetCalories(profile.target_calories || 2000);
-      setTargetProtein(profile.target_protein || 150);
+      const [mealTemplates, todayData] = await Promise.all([
+        getPlanMeals(activePlan.id).catch(() => []),
+        getTodaysMeals().catch(() => ({ meals: [] })),
+      ]);
 
-      // Load today's meals
-      const meals = await getTodaysMeals();
-      setTodaysMeals(meals || []);
-    } catch (error) {
-      console.error('Failed to load meal data:', error);
-      alert(error.message || 'Failed to load meal data');
+      setTemplates(mealTemplates || []);
+      setTodayMealLogs(todayData?.meals || []);
+    } catch (err) {
+      console.error('MealLogging load error:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogMeal = async (mealName, food, servingGrams) => {
-    try {
-      const multiplier = servingGrams / 100;
+  // Get the MealLog for a given meal_time (first one today, if multiple we sum later)
+  const logForMeal = useCallback((mealTime) => {
+    return todayMealLogs.find((l) => l.meal_name?.toLowerCase() === mealTime?.toLowerCase()) || null;
+  }, [todayMealLogs]);
 
-      const mealData = {
-        meal_name: mealName,
-        food_id: food.id,
-        food_name: food.name,
-        serving_size_grams: servingGrams,
-        calories: Math.round(food.calories * multiplier),
-        protein: Math.round(food.protein * multiplier),
-        carbs: Math.round(food.carbs * multiplier),
-        fats: Math.round(food.fats * multiplier),
+  // ── Build basket from template (per-serving macros → per-100g for modal) ──
+  const templateToBasket = (template) =>
+    (template.foods || []).map((tf) => {
+      const qg = tf.quantity_grams || 100;
+      return {
+        food: {
+          id: tf.food_id || `tf-${tf.id}`,
+          name: tf.food_name,
+          cal100: Math.round((tf.calories / qg) * 100),
+          p100: parseFloat(((tf.protein / qg) * 100).toFixed(1)),
+          c100: parseFloat(((tf.carbs / qg) * 100).toFixed(1)),
+          f100: parseFloat(((tf.fats / qg) * 100).toFixed(1)),
+        },
+        grams: qg,
       };
+    });
 
-      try {
-        const result = await logMeal(mealData);
-        setTodaysMeals((prev) => [...prev, result]);
-      } catch {
-        // Backend endpoint doesn't exist yet - add locally
-        setTodaysMeals((prev) => [...prev, { ...mealData, id: Date.now() }]);
-      }
+  const handleLogFromTemplate = (mealTime, template) => {
+    const basket = templateToBasket(template);
+    setFoodModal({
+      mealTime,
+      mealName: mealTime.charAt(0).toUpperCase() + mealTime.slice(1),
+      initialBasket: basket,
+      templateId: template.id,
+      followedPlan: true,
+    });
+  };
 
-      setShowFoodSearch(false);
-      setCurrentMeal(null);
-    } catch (error) {
-      console.error('Failed to log meal:', error);
-      alert(error.message || 'Failed to log meal');
+  const handleModify = (mealTime, template) => {
+    const basket = templateToBasket(template);
+    setFoodModal({
+      mealTime,
+      mealName: mealTime.charAt(0).toUpperCase() + mealTime.slice(1),
+      initialBasket: basket,
+      templateId: template.id,
+      followedPlan: false,
+    });
+  };
+
+  const handleAddFreeForm = (mealName) => {
+    setFoodModal({
+      mealTime: mealName.toLowerCase(),
+      mealName,
+      initialBasket: [],
+      templateId: null,
+      followedPlan: false,
+    });
+  };
+
+  // Confirm basket from modal → send ONE MealLog with all foods
+  const handleConfirmBasket = async (basket) => {
+    const { mealTime, mealName, templateId, followedPlan } = foodModal;
+    setFoodModal(null);
+
+    const foodsEaten = basket.map(({ food, grams }) => {
+      const m = parseFloat(grams || 100) / 100;
+      return {
+        name: food.name,
+        food_id: typeof food.id === 'number' ? food.id : null,
+        grams: parseFloat(grams),
+        calories: Math.round(food.cal100 * m),
+        protein: Math.round(food.p100 * m),
+        carbs: Math.round(food.c100 * m),
+        fats: Math.round(food.f100 * m),
+      };
+    });
+
+    const payload = {
+      meal_name: mealTime,
+      meal_template_id: templateId,
+      followed_plan: followedPlan,
+      foods_eaten: foodsEaten,
+    };
+
+    try {
+      const result = await logMeal(payload);
+      // result is the full MealLog from backend
+      setTodayMealLogs((prev) => {
+        // Replace if a log for this meal already existed, else append
+        const existing = prev.findIndex((l) => l.meal_name?.toLowerCase() === mealTime?.toLowerCase());
+        if (existing >= 0) {
+          // Merge: keep old + add new foods, sum totals (fresh load approach)
+          const updated = [...prev];
+          updated[existing] = {
+            ...updated[existing],
+            foods_eaten: [...(updated[existing].foods_eaten || []), ...foodsEaten],
+            total_calories: (updated[existing].total_calories || 0) + (result.total_calories || 0),
+            total_protein: (updated[existing].total_protein || 0) + (result.total_protein || 0),
+            total_carbs: (updated[existing].total_carbs || 0) + (result.total_carbs || 0),
+            total_fats: (updated[existing].total_fats || 0) + (result.total_fats || 0),
+          };
+          return updated;
+        }
+        return [...prev, {
+          id: result.id || Date.now(),
+          meal_name: mealTime,
+          meal_template_id: templateId,
+          foods_eaten: foodsEaten,
+          total_calories: result.total_calories || foodsEaten.reduce((s, f) => s + f.calories, 0),
+          total_protein: result.total_protein || foodsEaten.reduce((s, f) => s + f.protein, 0),
+          total_carbs: result.total_carbs || foodsEaten.reduce((s, f) => s + f.carbs, 0),
+          total_fats: result.total_fats || foodsEaten.reduce((s, f) => s + f.fats, 0),
+        }];
+      });
+      setEnergyCapture({ mealName });
+    } catch (err) {
+      console.error('logMeal error:', err);
+      // Optimistic update anyway
+      setTodayMealLogs((prev) => [...prev, {
+        id: Date.now(),
+        meal_name: mealTime,
+        foods_eaten: foodsEaten,
+        total_calories: foodsEaten.reduce((s, f) => s + f.calories, 0),
+        total_protein: foodsEaten.reduce((s, f) => s + f.protein, 0),
+        total_carbs: foodsEaten.reduce((s, f) => s + f.carbs, 0),
+        total_fats: foodsEaten.reduce((s, f) => s + f.fats, 0),
+      }]);
+      setEnergyCapture({ mealName });
     }
   };
 
-  const openFoodSearch = (mealName) => {
-    setCurrentMeal(mealName);
-    setShowFoodSearch(true);
-  };
+  const handleEnergySubmit = () => setEnergyCapture(null);
+
+  // Build card list: standard order + extra logged meals
+  const MEAL_ORDER = ['breakfast', 'lunch', 'snack', 'dinner'];
+  const templateMap = {};
+  templates.forEach((t) => { if (t.meal_time) templateMap[t.meal_time.toLowerCase()] = t; });
+
+  const extraLoggedMeals = todayMealLogs
+    .map((l) => l.meal_name?.toLowerCase())
+    .filter((n) => n && !MEAL_ORDER.includes(n));
+  const uniqueExtra = [...new Set(extraLoggedMeals)];
+
+  const allMealTimes = [...MEAL_ORDER, ...uniqueExtra];
 
   if (loading) {
     return (
-      <div style={styles.container}>
-        <div style={styles.loadingContainer}>
-          <div style={styles.spinner}></div>
-          <p style={styles.loadingText}>Loading meals...</p>
+      <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div>
+          <div style={{ width: 44, height: 44, border: '3px solid rgba(255,255,255,0.08)', borderTop: '3px solid #00d4ff', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto' }} />
+          <p style={{ color: '#555', textAlign: 'center', marginTop: 16, fontSize: 14 }}>Loading meals...</p>
         </div>
       </div>
     );
   }
 
-  const calorieProgress = (totalCalories / targetCalories) * 100;
-  const proteinProgress = (totalProtein / targetProtein) * 100;
-
-  const mealNames = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
-
   return (
-    <div style={styles.container}>
+    <div style={{
+      minHeight: '100vh', backgroundColor: '#0a0a0a', color: '#fff',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      paddingBottom: 80,
+    }}>
       {/* Header */}
-      <div style={styles.header}>
-        <button onClick={() => navigate('/')} style={styles.backBtn}>
+      <div style={{ padding: '20px 20px 0' }}>
+        <button onClick={() => navigate('/')} style={{ background: 'none', border: 'none', color: '#00d4ff', fontSize: 15, cursor: 'pointer', marginBottom: 12 }}>
           ← Back
         </button>
-        <div style={styles.headerContent}>
-          <h1 style={styles.title}>Today's Nutrition</h1>
-          <p style={styles.subtitle}>Track your meals and macros</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 4 }}>
+          <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0 }}>Today's Nutrition</h1>
         </div>
+        {plan && <p style={{ fontSize: 14, color: '#555', margin: '0 0 20px' }}>{plan.name}</p>}
       </div>
 
-      {/* Daily Progress Card */}
-      <div style={styles.progressCard}>
-        <h2 style={styles.progressTitle}>Daily Progress</h2>
-
-        {/* Calories */}
-        <div style={styles.macroSection}>
-          <div style={styles.macroHeader}>
-            <span style={styles.macroLabel}>Calories</span>
-            <span style={styles.macroValue}>
-              {totalCalories} / {targetCalories} kcal
-            </span>
-          </div>
-          <div style={styles.progressBar}>
-            <div
-              style={{
-                ...styles.progressFill,
-                width: `${Math.min(100, calorieProgress)}%`,
-                backgroundColor: '#00d4ff',
-              }}
-            ></div>
-          </div>
-        </div>
-
-        {/* Protein */}
-        <div style={styles.macroSection}>
-          <div style={styles.macroHeader}>
-            <span style={styles.macroLabel}>Protein</span>
-            <span style={styles.macroValue}>
-              {totalProtein}g / {targetProtein}g
-            </span>
-          </div>
-          <div style={styles.progressBar}>
-            <div
-              style={{
-                ...styles.progressFill,
-                width: `${Math.min(100, proteinProgress)}%`,
-                backgroundColor: '#00ff88',
-              }}
-            ></div>
-          </div>
-        </div>
-
-        {/* Other Macros */}
-        <div style={styles.otherMacros}>
-          <div style={styles.otherMacroItem}>
-            <span style={styles.otherMacroLabel}>Carbs</span>
-            <span style={styles.otherMacroValue}>{totalCarbs}g</span>
-          </div>
-          <div style={styles.otherMacroItem}>
-            <span style={styles.otherMacroLabel}>Fats</span>
-            <span style={styles.otherMacroValue}>{totalFats}g</span>
-          </div>
-        </div>
+      {/* Macro progress */}
+      <div style={{
+        margin: '0 20px 20px',
+        background: 'linear-gradient(135deg, rgba(99,102,241,0.12), rgba(139,92,246,0.08))',
+        border: '1px solid rgba(99,102,241,0.2)',
+        borderRadius: 20, padding: 20,
+      }}>
+        <MacroBar label="Kcal" current={Math.round(totals.calories)} target={targets.calories} color="#6366f1" />
+        <MacroBar label="Protein" current={Math.round(totals.protein)} target={targets.protein} color="#00ff88" />
+        <MacroBar label="Carbs" current={Math.round(totals.carbs)} target={targets.carbs} color="#ffd93d" />
+        <MacroBar label="Fats" current={Math.round(totals.fats)} target={targets.fats} color="#ff9f43" />
       </div>
 
-      {/* Meal Sections */}
-      {mealNames.map((mealName) => {
-        const mealLogs = todaysMeals.filter((m) => m.meal_name === mealName);
-        const mealCalories = mealLogs.reduce((sum, m) => sum + (m.calories || 0), 0);
+      {/* Meal cards */}
+      <div style={{ padding: '0 20px' }}>
+        {allMealTimes.map((mt) => (
+          <MealCard
+            key={mt}
+            mealTime={mt}
+            template={templateMap[mt] || null}
+            mealLog={logForMeal(mt)}
+            onLogFromTemplate={handleLogFromTemplate}
+            onModify={handleModify}
+            onAddFreeForm={handleAddFreeForm}
+          />
+        ))}
 
-        return (
-          <div key={mealName} style={styles.mealCard}>
-            <div style={styles.mealHeader}>
-              <div>
-                <h3 style={styles.mealName}>{mealName}</h3>
-                {mealCalories > 0 && (
-                  <p style={styles.mealCalories}>{mealCalories} kcal</p>
-                )}
-              </div>
-              <button
-                onClick={() => openFoodSearch(mealName)}
-                style={styles.addButton}
-              >
-                + Add Food
-              </button>
-            </div>
+        <button onClick={() => handleAddFreeForm('Extra')} style={{
+          width: '100%', padding: 16, borderRadius: 16, border: '1px dashed #2a2a2a',
+          backgroundColor: 'transparent', color: '#555', fontSize: 14, cursor: 'pointer', marginTop: 4,
+        }}>
+          + Log something extra
+        </button>
+      </div>
 
-            {/* Logged Foods */}
-            {mealLogs.length > 0 ? (
-              <div style={styles.foodList}>
-                {mealLogs.map((meal, index) => (
-                  <div key={index} style={styles.foodItem}>
-                    <div style={styles.foodInfo}>
-                      <span style={styles.foodName}>{meal.food_name}</span>
-                      <span style={styles.foodServing}>
-                        {meal.serving_size_grams}g
-                      </span>
-                    </div>
-                    <div style={styles.foodMacros}>
-                      <span>{meal.calories} kcal</span>
-                      <span>P: {meal.protein}g</span>
-                      <span>C: {meal.carbs}g</span>
-                      <span>F: {meal.fats}g</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p style={styles.emptyMeal}>No foods logged yet</p>
-            )}
-          </div>
-        );
-      })}
-
-      {/* Food Search Modal */}
-      {showFoodSearch && (
+      {foodModal && (
         <FoodSearchModal
-          mealName={currentMeal}
-          onClose={() => {
-            setShowFoodSearch(false);
-            setCurrentMeal(null);
-          }}
-          onSelectFood={handleLogMeal}
+          mealName={foodModal.mealName}
+          initialBasket={foodModal.initialBasket}
+          onClose={() => setFoodModal(null)}
+          onConfirm={handleConfirmBasket}
+        />
+      )}
+
+      {energyCapture && (
+        <EnergyCapture
+          mealName={energyCapture.mealName}
+          onSubmit={handleEnergySubmit}
         />
       )}
     </div>
   );
 }
 
-// ============================================================================
-// ✅ FIXED FOOD SEARCH MODAL - No more flickering!
-// ============================================================================
-
-function FoodSearchModal({ mealName, onClose, onSelectFood }) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-  const [selectedFood, setSelectedFood] = useState(null);
-  const [servingGrams, setServingGrams] = useState('100');
-
-  // ✅ FIX: Move search logic into useEffect, properly memoized
-  useEffect(() => {
-    // Early return if query too short
-    if (searchQuery.trim().length < 2) {
-      setSearchResults([]);
-      return;
-    }
-
-    // Set up debounce
-    const timer = setTimeout(async () => {
-      try {
-        setSearching(true);
-        console.log('🔍 Searching for:', searchQuery); // Debug log
-        const results = await searchFoods(searchQuery, 20);
-        setSearchResults(results || []);
-      } catch (error) {
-        console.error('Search failed:', error);
-        setSearchResults([]);
-      } finally {
-        setSearching(false);
-      }
-    }, 300); // 300ms debounce
-
-    // Cleanup: cancel timer if searchQuery changes before 300ms
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [searchQuery]); // Only re-run when searchQuery changes
-
-  const handleAddFood = () => {
-    if (!selectedFood || !servingGrams) {
-      alert('Please select a food and enter serving size');
-      return;
-    }
-
-    onSelectFood(mealName, selectedFood, parseFloat(servingGrams));
-  };
-
-  // ✅ FIX: Memoize macro calculation to prevent unnecessary recalculations
-  const macros = useCallback(() => {
-    if (!selectedFood) return null;
-    const multiplier = parseFloat(servingGrams || 100) / 100;
-    return {
-      calories: Math.round(selectedFood.calories * multiplier),
-      protein: Math.round(selectedFood.protein * multiplier),
-      carbs: Math.round(selectedFood.carbs * multiplier),
-      fats: Math.round(selectedFood.fats * multiplier),
-    };
-  }, [selectedFood, servingGrams])();
-
-  return (
-    <div style={styles.modalOverlay} onClick={onClose}>
-      <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-        <div style={styles.modalHeader}>
-          <h2 style={styles.modalTitle}>Add to {mealName}</h2>
-          <button onClick={onClose} style={styles.closeButton}>
-            ✕
-          </button>
-        </div>
-
-        {/* Search Input */}
-        <input
-          type="text"
-          placeholder="Search for food..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={styles.searchInput}
-          autoFocus
-        />
-
-        {/* Search Results */}
-        {searching && <p style={styles.searchingText}>Searching...</p>}
-
-        {searchResults.length > 0 && !selectedFood && (
-          <div style={styles.resultsList}>
-            {searchResults.map((food) => (
-              <div
-                key={food.id}
-                onClick={() => setSelectedFood(food)}
-                style={styles.resultItem}
-              >
-                <div style={styles.resultName}>{food.name}</div>
-                <div style={styles.resultMacros}>
-                  {food.calories} cal • P: {food.protein}g • C: {food.carbs}g • F:{' '}
-                  {food.fats}g
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Selected Food Confirmation */}
-        {selectedFood && (
-          <div style={styles.selectedFoodCard}>
-            <div style={styles.selectedHeader}>
-              <h3 style={styles.selectedName}>{selectedFood.name}</h3>
-              <button
-                onClick={() => setSelectedFood(null)}
-                style={styles.changeButton}
-              >
-                Change
-              </button>
-            </div>
-
-            <div style={styles.servingInput}>
-              <label style={styles.servingLabel}>Serving Size (grams)</label>
-              <input
-                type="number"
-                step="1"
-                value={servingGrams}
-                onChange={(e) => setServingGrams(e.target.value)}
-                style={styles.servingField}
-              />
-            </div>
-
-            {macros && (
-              <div style={styles.macroPreview}>
-                <div style={styles.macroPreviewItem}>
-                  <span style={styles.macroPreviewLabel}>Calories</span>
-                  <span style={styles.macroPreviewValue}>{macros.calories}</span>
-                </div>
-                <div style={styles.macroPreviewItem}>
-                  <span style={styles.macroPreviewLabel}>Protein</span>
-                  <span style={styles.macroPreviewValue}>{macros.protein}g</span>
-                </div>
-                <div style={styles.macroPreviewItem}>
-                  <span style={styles.macroPreviewLabel}>Carbs</span>
-                  <span style={styles.macroPreviewValue}>{macros.carbs}g</span>
-                </div>
-                <div style={styles.macroPreviewItem}>
-                  <span style={styles.macroPreviewLabel}>Fats</span>
-                  <span style={styles.macroPreviewValue}>{macros.fats}g</span>
-                </div>
-              </div>
-            )}
-
-            <button onClick={handleAddFood} style={styles.addFoodButton}>
-              Add to {mealName}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-const styles = {
-  container: {
-    minHeight: '100vh',
-    backgroundColor: '#0a0a0a',
-    color: '#ffffff',
-    padding: '20px',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    paddingBottom: '60px',
-  },
-  loadingContainer: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: '80vh',
-  },
-  spinner: {
-    width: '50px',
-    height: '50px',
-    border: '4px solid rgba(255, 255, 255, 0.1)',
-    borderTop: '4px solid #00d4ff',
-    borderRadius: '50%',
-    animation: 'spin 1s linear infinite',
-  },
-  loadingText: {
-    marginTop: '20px',
-    color: '#888',
-  },
-  header: {
-    marginBottom: '24px',
-  },
-  backBtn: {
-    background: 'none',
-    border: 'none',
-    color: '#00d4ff',
-    fontSize: '16px',
-    cursor: 'pointer',
-    marginBottom: '12px',
-    padding: '8px 0',
-  },
-  headerContent: {
-    marginTop: '8px',
-  },
-  title: {
-    fontSize: '28px',
-    fontWeight: '700',
-    margin: '0 0 8px 0',
-  },
-  subtitle: {
-    fontSize: '16px',
-    color: '#888',
-    margin: 0,
-  },
-  progressCard: {
-    background: 'linear-gradient(135deg, rgba(138, 43, 226, 0.15), rgba(75, 0, 130, 0.15))',
-    border: '1px solid rgba(138, 43, 226, 0.3)',
-    borderRadius: '16px',
-    padding: '24px',
-    marginBottom: '24px',
-  },
-  progressTitle: {
-    fontSize: '20px',
-    fontWeight: '700',
-    marginBottom: '20px',
-    color: '#ffffff',
-  },
-  macroSection: {
-    marginBottom: '20px',
-  },
-  macroHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '8px',
-  },
-  macroLabel: {
-    fontSize: '14px',
-    fontWeight: '600',
-    color: '#aaa',
-  },
-  macroValue: {
-    fontSize: '16px',
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  progressBar: {
-    height: '12px',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: '6px',
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    transition: 'width 0.3s ease',
-  },
-  otherMacros: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: '16px',
-    marginTop: '20px',
-  },
-  otherMacroItem: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '4px',
-  },
-  otherMacroLabel: {
-    fontSize: '12px',
-    color: '#888',
-  },
-  otherMacroValue: {
-    fontSize: '18px',
-    fontWeight: '700',
-    color: '#fff',
-  },
-  mealCard: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: '16px',
-    padding: '20px',
-    marginBottom: '16px',
-  },
-  mealHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '16px',
-  },
-  mealName: {
-    fontSize: '18px',
-    fontWeight: '700',
-    margin: '0 0 4px 0',
-  },
-  mealCalories: {
-    fontSize: '14px',
-    color: '#00d4ff',
-    margin: 0,
-  },
-  addButton: {
-    padding: '8px 16px',
-    backgroundColor: '#00d4ff',
-    color: '#0a0a0a',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '14px',
-    fontWeight: '600',
-    cursor: 'pointer',
-  },
-  foodList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '12px',
-  },
-  foodItem: {
-    backgroundColor: '#0a0a0a',
-    padding: '12px',
-    borderRadius: '8px',
-    border: '1px solid #2a2a2a',
-  },
-  foodInfo: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    marginBottom: '8px',
-  },
-  foodName: {
-    fontSize: '14px',
-    fontWeight: '600',
-  },
-  foodServing: {
-    fontSize: '12px',
-    color: '#888',
-  },
-  foodMacros: {
-    display: 'flex',
-    gap: '12px',
-    fontSize: '12px',
-    color: '#aaa',
-  },
-  emptyMeal: {
-    fontSize: '14px',
-    color: '#666',
-    textAlign: 'center',
-    padding: '20px',
-  },
-  modalOverlay: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    display: 'flex',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    zIndex: 1000,
-  },
-  modalContent: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: '24px 24px 0 0',
-    width: '100%',
-    maxWidth: '600px',
-    maxHeight: '85vh',
-    padding: '24px',
-    overflowY: 'auto',
-  },
-  modalHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '20px',
-  },
-  modalTitle: {
-    fontSize: '22px',
-    fontWeight: '700',
-    margin: 0,
-  },
-  closeButton: {
-    background: 'none',
-    border: 'none',
-    color: '#888',
-    fontSize: '24px',
-    cursor: 'pointer',
-  },
-  searchInput: {
-    width: '100%',
-    padding: '14px',
-    backgroundColor: '#0a0a0a',
-    border: '1px solid #2a2a2a',
-    borderRadius: '12px',
-    color: '#fff',
-    fontSize: '16px',
-    marginBottom: '16px',
-  },
-  searchingText: {
-    textAlign: 'center',
-    color: '#888',
-    fontSize: '14px',
-  },
-  resultsList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-    maxHeight: '300px',
-    overflowY: 'auto',
-  },
-  resultItem: {
-    padding: '12px',
-    backgroundColor: '#0a0a0a',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-    border: '1px solid #2a2a2a',
-  },
-  resultName: {
-    fontSize: '15px',
-    fontWeight: '600',
-    marginBottom: '4px',
-  },
-  resultMacros: {
-    fontSize: '12px',
-    color: '#888',
-  },
-  selectedFoodCard: {
-    marginTop: '20px',
-    padding: '20px',
-    backgroundColor: '#0a0a0a',
-    borderRadius: '12px',
-    border: '1px solid #2a2a2a',
-  },
-  selectedHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '16px',
-  },
-  selectedName: {
-    fontSize: '18px',
-    fontWeight: '700',
-    margin: 0,
-  },
-  changeButton: {
-    padding: '6px 12px',
-    backgroundColor: '#2a2a2a',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '6px',
-    fontSize: '12px',
-    cursor: 'pointer',
-  },
-  servingInput: {
-    marginBottom: '16px',
-  },
-  servingLabel: {
-    display: 'block',
-    fontSize: '12px',
-    color: '#888',
-    marginBottom: '8px',
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
-  },
-  servingField: {
-    width: '100%',
-    padding: '12px',
-    backgroundColor: '#1a1a1a',
-    border: '1px solid #2a2a2a',
-    borderRadius: '8px',
-    color: '#fff',
-    fontSize: '16px',
-    fontWeight: '600',
-  },
-  macroPreview: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(4, 1fr)',
-    gap: '12px',
-    marginBottom: '20px',
-  },
-  macroPreviewItem: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '4px',
-  },
-  macroPreviewLabel: {
-    fontSize: '11px',
-    color: '#888',
-    textTransform: 'uppercase',
-  },
-  macroPreviewValue: {
-    fontSize: '16px',
-    fontWeight: '700',
-    color: '#00d4ff',
-  },
-  addFoodButton: {
-    width: '100%',
-    padding: '14px',
-    backgroundColor: '#00d4ff',
-    color: '#0a0a0a',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '16px',
-    fontWeight: '700',
-    cursor: 'pointer',
-  },
-};
-
-// Add CSS animation for spinner
-const styleSheet = document.createElement('style');
-styleSheet.textContent = `
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-`;
-document.head.appendChild(styleSheet);
+// Inject keyframe
+const _ss = document.createElement('style');
+_ss.textContent = `@keyframes spin { to { transform: rotate(360deg); } }`;
+document.head.appendChild(_ss);

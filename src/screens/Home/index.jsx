@@ -210,11 +210,9 @@ export default function Home() {
             icon="🍽️"
             label="CREATE"
             title="Diet Plan"
-            link="Use AI →"
+            link="Manual builder →"
             color="#6366f1"
-            onClick={() => navigate("/central", {
-              state: { preset: "Create a diet plan for me" }
-            })}
+            onClick={() => navigate("/diet-builder")}
           />
         </div>
 
@@ -381,6 +379,8 @@ function TodayCard({ data, navigate, user }) {
         return { value: "In Progress", status: "in_progress", icon: "🏋️" };
       case "pending":
         return { value: "Pending", status: "pending", icon: "⏳" };
+      case "rest_day":
+        return { value: "Rest Day", status: "rest", icon: "🌙" };
       case "not_set":
         return { value: "Not Set", status: "muted", icon: "➕" };
       default:
@@ -542,6 +542,8 @@ function TodayCard({ data, navigate, user }) {
                   ? "#8b5cf6"
                   : item.status === "in_progress"
                   ? "#3b82f6"
+                  : item.status === "rest"
+                  ? "#6b7280"
                   : "rgba(255,255,255,0.5)",
               }}>
                 {item.value}

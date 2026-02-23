@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { setActiveDietPlan } from "../../api/user";
-import { searchFoods } from "../../api/diet";
+import { searchFoods, createDietPlan, addMealToPlan, activateDietPlan } from "../../api/diet";
 
 export default function DietBuilder() {
   const navigate = useNavigate();
@@ -30,6 +30,11 @@ export default function DietBuilder() {
     editingPlan?.daily_protein || ""
   );
   const [meals, setMeals] = useState(editingPlan?.meals || []);
+
+  // Calorie split (rest day vs training day)
+  const [showCalorieSplit, setShowCalorieSplit] = useState(true);
+  const [restDayCalories, setRestDayCalories] = useState(editingPlan?.rest_day_calories || "");
+  const [workoutDayCalories, setWorkoutDayCalories] = useState(editingPlan?.workout_day_calories || "");
 
   // UI state
   const [saving, setSaving] = useState(false);
@@ -200,29 +205,89 @@ export default function DietBuilder() {
 
     setSaving(true);
     try {
-      // TODO: Create API endpoint to save diet plan
-      // For now, we'll create a mock structure
-      const planData = {
+      // ── 1. Map meal names → meal_time enum ─────────────────────────────────
+      const mealTimeMap = {
+        breakfast: "breakfast", lunch: "lunch", dinner: "dinner",
+        "snack 1": "snack", "snack 2": "snack", snack: "snack",
+      };
+      const getMealTime = (name) =>
+        mealTimeMap[name.toLowerCase()] || "snack";
+
+      // ── 2. Derive carbs & fats from calories if not set manually ───────────
+      const cal = parseInt(dailyCalories) || 2000;
+      const prot = parseInt(dailyProtein) || 150;
+      const protCals = prot * 4;
+      const remaining = cal - protCals;
+      const carbs = Math.round((remaining * 0.55) / 4);
+      const fats = Math.round((remaining * 0.45) / 9);
+
+      // ── 3. Create the plan ─────────────────────────────────────────────────
+      const planPayload = {
         name: planName.trim(),
-        goal: selectedGoal,
-        daily_calories: parseInt(dailyCalories),
-        daily_protein: parseInt(dailyProtein),
-        meals: meals,
-        created_at: new Date().toISOString(),
+        goal_type: selectedGoal?.toLowerCase() || "maintain",
+        target_calories: cal,
+        target_protein: prot,
+        target_carbs: carbs,
+        target_fats: fats,
+        meals_per_day: meals.length,
+        is_active: true,
+        rest_day_calories: restDayCalories ? parseInt(restDayCalories) : null,
+        workout_day_calories: workoutDayCalories ? parseInt(workoutDayCalories) : null,
       };
 
-      console.log("Saving diet plan:", planData);
+      const plan = await createDietPlan(planPayload);
+      const planId = plan.id;
+      setSavedPlanId(planId);
 
-      // Mock save - replace with actual API call
-      // const response = await createDietPlan(planData);
-      // const planId = response.id;
-      // setSavedPlanId(planId);
+      // ── 4. Save each meal template with foods ──────────────────────────────
+      for (const meal of meals) {
+        const mealTotals = calculateMealTotals(meal);
+        const mealPayload = {
+          meal_time: getMealTime(meal.name),
+          meal_name: meal.name,
+          target_calories: Math.round(mealTotals.calories) || Math.round(cal / meals.length),
+          target_protein: Math.round(mealTotals.protein) || Math.round(prot / meals.length),
+          target_carbs: Math.round(mealTotals.carbs) || 0,
+          target_fats: Math.round(mealTotals.fats) || 0,
+          foods: meal.foods.map((food) => {
+            const mult = food.serving_size / 100;
+            return {
+              food_id: food.food_id || null,
+              food_name: food.name,
+              quantity_grams: food.serving_size,
+              calories: Math.round(food.calories * mult),
+              protein: Math.round(food.protein * mult * 10) / 10,
+              carbs: Math.round(food.carbs * mult * 10) / 10,
+              fats: Math.round(food.fats * mult * 10) / 10,
+            };
+          }),
+        };
+        await addMealToPlan(planId, mealPayload);
+      }
 
-      alert("✅ Diet plan saved!");
-      return 1; // Mock ID for now
+      // ── 5. Mirror to Vault ─────────────────────────────────────────────────
+      try {
+        const token = localStorage.getItem("token");
+        await fetch("http://localhost:8000/api/vault", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "diet",
+            category: "plan",
+            title: planName.trim(),
+            summary: `${selectedGoal} · ${cal} kcal · ${prot}g protein · ${meals.length} meals/day`,
+            content: { planId, name: planName.trim(), goal: selectedGoal, target_calories: cal, target_protein: prot, meals_per_day: meals.length },
+            source: "manual",
+          }),
+        });
+      } catch (vaultErr) {
+        console.warn("Vault mirror failed (non-fatal):", vaultErr);
+      }
+
+      return planId;
     } catch (error) {
       console.error("Failed to save diet plan:", error);
-      alert(`❌ ${error.message || "Failed to save diet plan"}`);
+      alert(`Failed to save: ${error.message || "Unknown error"}`);
       return null;
     } finally {
       setSaving(false);
@@ -236,18 +301,14 @@ export default function DietBuilder() {
 
       if (!planId) {
         planId = await handleSave();
-        if (!planId) {
-          setSettingActive(false);
-          return;
-        }
+        if (!planId) { setSettingActive(false); return; }
       }
 
-      await setActiveDietPlan(planId);
-      alert("✅ Set as active diet plan! You'll see your progress on the home screen.");
-      navigate("/");
+      await activateDietPlan(planId);
+      navigate("/", { state: { toast: "Diet plan set as active!" } });
     } catch (error) {
       console.error("Failed to set active plan:", error);
-      alert(`❌ ${error.message || "Failed to set as active plan"}`);
+      alert(`Failed: ${error.message || "Could not set as active plan"}`);
     } finally {
       setSettingActive(false);
     }
@@ -435,6 +496,68 @@ export default function DietBuilder() {
           </div>
         </div>
 
+        {/* CALORIE SPLIT (rest day vs training day) */}
+        <div style={{ marginBottom: 24 }}>
+          <button
+            onClick={() => setShowCalorieSplit(!showCalorieSplit)}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              width: "100%", background: "rgba(99,102,241,0.08)",
+              border: "1px solid rgba(99,102,241,0.25)", borderRadius: 14,
+              padding: "13px 16px", cursor: "pointer", color: "#a78bfa",
+              fontSize: 14, fontWeight: 600,
+            }}
+          >
+            <span>Training vs Rest Day Calorie Split</span>
+            <span style={{ fontSize: 12, opacity: 0.7 }}>{showCalorieSplit ? "▲ Collapse" : "▼ Expand"}</span>
+          </button>
+
+          {showCalorieSplit && (
+            <div style={{
+              marginTop: 10, padding: "16px", borderRadius: 14,
+              background: "rgba(99,102,241,0.05)", border: "1px solid rgba(99,102,241,0.15)",
+            }}>
+              <p style={{ margin: "0 0 12px", fontSize: 12, color: "rgba(255,255,255,0.45)", lineHeight: 1.5 }}>
+                Eat more on training days, less on rest days. Leave blank to use the same daily target for all days.
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, color: "rgba(255,255,255,0.55)", marginBottom: 6 }}>
+                    Training Day (kcal)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder={dailyCalories || "e.g. 2500"}
+                    value={workoutDayCalories}
+                    onChange={(e) => setWorkoutDayCalories(e.target.value)}
+                    style={{
+                      width: "100%", padding: "11px 12px", borderRadius: 10,
+                      border: "1px solid rgba(99,102,241,0.3)", background: "rgba(0,0,0,0.35)",
+                      color: "#fff", fontSize: 15, outline: "none", boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, color: "rgba(255,255,255,0.55)", marginBottom: 6 }}>
+                    Rest Day (kcal)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder={dailyCalories ? Math.round(dailyCalories * 0.85) : "e.g. 2000"}
+                    value={restDayCalories}
+                    onChange={(e) => setRestDayCalories(e.target.value)}
+                    style={{
+                      width: "100%", padding: "11px 12px", borderRadius: 10,
+                      border: "1px solid rgba(99,102,241,0.3)", background: "rgba(0,0,0,0.35)",
+                      color: "#fff", fontSize: 15, outline: "none", boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* DAILY TOTALS */}
         <DailyTotalsCard totals={dailyTotals} targets={{ calories: dailyCalories, protein: dailyProtein }} />
 
@@ -496,7 +619,7 @@ export default function DietBuilder() {
           onClick={handleSetAsActive}
           loading={settingActive}
           color="#10b981"
-          icon="⚡"
+          icon=""
           text="Set as Active Plan"
           loadingText="Setting Active..."
         />
@@ -504,8 +627,8 @@ export default function DietBuilder() {
           onClick={handleSave}
           loading={saving}
           color="#8b5cf6"
-          icon="💾"
-          text={editingId ? "Update Plan" : "Save Plan"}
+          icon=""
+          text={savedPlanId ? "Saved" : editingId ? "Update Plan" : "Save Plan"}
           loadingText={editingId ? "Updating..." : "Saving..."}
         />
       </div>

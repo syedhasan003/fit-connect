@@ -230,16 +230,81 @@ function SummaryScreen({ session, setLogs, exercises, duration, onGoHome }) {
   );
 }
 
+// ─── Rest Day Screen ──────────────────────────────────────────────────────────
+function RestDayScreen({ programName, onGoHome }) {
+  const todayWeekday = WEEKDAYS[new Date().getDay()];
+  const tips = [
+    { label: 'Stay hydrated',    sub: 'Aim for 2–3 L of water today',     grad: 'linear-gradient(135deg,#1e3a5f,#1e40af)' },
+    { label: 'Prioritise sleep', sub: 'Muscle repair happens overnight',   grad: 'linear-gradient(135deg,#1c1b4b,#312e81)' },
+    { label: 'Light movement',   sub: 'A walk or stretch is all you need', grad: 'linear-gradient(135deg,#064e3b,#059669)' },
+  ];
+  return (
+    <div style={{
+      minHeight: '100vh', background: C.bg,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      padding: '40px 24px', gap: 28,
+    }}>
+      {/* Crescent moon icon */}
+      <div style={{
+        width: 88, height: 88, borderRadius: '50%',
+        background: 'linear-gradient(135deg, #1e1b4b, #312e81)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        boxShadow: '0 0 48px rgba(99,102,241,0.35)',
+        animation: 'wt-pop 0.6s ease',
+      }}>
+        <svg width={38} height={38} viewBox="0 0 24 24" fill="none"
+          stroke="#818cf8" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+      </div>
+
+      <div style={{ textAlign: 'center', maxWidth: 320 }}>
+        <h2 style={{ color: C.text, fontSize: 28, fontWeight: 800, margin: '0 0 10px' }}>Rest Day</h2>
+        <p style={{ color: C.muted2, fontSize: 15, lineHeight: 1.6, margin: '0 0 6px' }}>
+          No workout scheduled for {todayWeekday}.
+        </p>
+        {programName && (
+          <p style={{ color: C.muted, fontSize: 13, margin: 0 }}>
+            {programName} · Recovery is part of progress.
+          </p>
+        )}
+      </div>
+
+      {/* Tips */}
+      <div style={{ width: '100%', maxWidth: 380, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {tips.map(tip => (
+          <div key={tip.label} style={{ background: tip.grad, borderRadius: 14, padding: '14px 18px' }}>
+            <div style={{ color: '#fff', fontSize: 14, fontWeight: 700 }}>{tip.label}</div>
+            <div style={{ color: 'rgba(255,255,255,0.62)', fontSize: 12, marginTop: 3 }}>{tip.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <button onClick={onGoHome} style={{
+        padding: '15px 52px',
+        background: `linear-gradient(135deg, ${C.accent}, #818cf8)`,
+        border: 'none', borderRadius: 100, color: '#fff',
+        fontSize: 16, fontWeight: 800, cursor: 'pointer',
+        boxShadow: `0 8px 32px ${C.accentGlow}`,
+      }}>
+        Back to Home
+      </button>
+    </div>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function WorkoutTracking() {
   injectCSS();
   const navigate = useNavigate();
 
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState(null);
-  const [session,   setSession]   = useState(null);
-  const [exercises, setExercises] = useState([]);
-  const [setLogs,   setSetLogs]   = useState({});
+  const [loading,     setLoading]     = useState(true);
+  const [error,       setError]       = useState(null);
+  const [session,     setSession]     = useState(null);
+  const [exercises,   setExercises]   = useState([]);
+  const [setLogs,     setSetLogs]     = useState({});
+  const [restDay,     setRestDay]     = useState(false);
+  const [restDayInfo, setRestDayInfo] = useState(null);
   const sessionLoaded = useRef(false);
 
   const [currentIdx,  setCurrentIdx]  = useState(0);
@@ -287,6 +352,13 @@ export default function WorkoutTracking() {
       let nextDay;
       try { nextDay = await getNextWorkoutDay(); }
       catch { setError('No active workout program. Please set one in the Vault first.'); return; }
+
+      // ── Rest Day: today has no scheduled workout ─────────────────────────
+      if (nextDay.rest_day) {
+        setRestDay(true);
+        setRestDayInfo({ program_name: nextDay.program_name });
+        return;
+      }
 
       let activeSession = await getActiveSession();
       if (!activeSession) activeSession = await startWorkoutSession(nextDay.program_id, nextDay.day_number);
@@ -375,6 +447,11 @@ export default function WorkoutTracking() {
         Go Home
       </button>
     </div>
+  );
+
+  // ─── Rest Day ────────────────────────────────────────────────────────────────
+  if (restDay) return (
+    <RestDayScreen programName={restDayInfo?.program_name} onGoHome={() => navigate('/')} />
   );
 
   // ─── Summary ────────────────────────────────────────────────────────────────
