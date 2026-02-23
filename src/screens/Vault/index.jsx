@@ -39,7 +39,9 @@ export default function Vault() {
   };
 
   const filteredUserFiles = items.filter(item => {
-    if (item.source !== "user") return false;
+    // Show items explicitly created by user (source "user" or "manual"), excluding typed items shown in primary sections
+    if (item.source !== "user" && item.source !== "manual") return false;
+    if (item.type === "diet" || item.type === "workout") return false; // shown in their own sections
     if (searchQuery && !item.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
@@ -92,8 +94,7 @@ export default function Vault() {
             subtitle="Diet builder plans"
             count={counts.diet}
             color="#ec4899"
-            onClick={() => alert("Coming soon! Diet Builder is under construction.")}
-            disabled
+            onClick={() => navigate("/vault/diets")}
           />
           <PrimarySourceCard
             icon="📊"

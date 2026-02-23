@@ -22,6 +22,7 @@ import CentralAnswersList from "./screens/CentralAnswers/CentralAnswersList";
 import CentralAnswerDetail from "./screens/CentralAnswers/CentralAnswerDetail";
 import ManualWorkoutsList from "./screens/ManualWorkouts/ManualWorkoutsList";
 import ManualWorkoutDetail from "./screens/ManualWorkouts/ManualWorkoutDetail";
+import DietPlansList from "./screens/DietPlans/DietPlansList";
 
 // ✅ REMINDERS ROUTES
 import Reminders from "./screens/Reminders";
@@ -148,6 +149,16 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <ManualWorkoutDetail />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* ✅ DIET PLANS VAULT */}
+      <Route
+        path="/vault/diets"
+        element={
+          <ProtectedRoute>
+            <DietPlansList />
           </ProtectedRoute>
         }
       />

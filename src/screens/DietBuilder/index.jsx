@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { setActiveDietPlan } from "../../api/user";
 import { searchFoods, createDietPlan, addMealToPlan, activateDietPlan } from "../../api/diet";
+import { createVaultItem } from "../../api/vault";
 
 export default function DietBuilder() {
   const navigate = useNavigate();
@@ -40,9 +40,6 @@ export default function DietBuilder() {
   const [saving, setSaving] = useState(false);
   const [settingActive, setSettingActive] = useState(false);
   const [savedPlanId, setSavedPlanId] = useState(editingId || null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState([]);
-  const [searching, setSearching] = useState(false);
   const [activeMeal, setActiveMeal] = useState(null); // Which meal is being edited
 
   // Initialize meals when meal count is selected
@@ -85,24 +82,6 @@ export default function DietBuilder() {
     setShowMealSelector(false);
   };
 
-  const handleFoodSearch = async (query) => {
-    if (!query || query.length < 2) {
-      setSearchResults([]);
-      return;
-    }
-
-    setSearching(true);
-    try {
-      const results = await searchFoods(query);
-      setSearchResults(results);
-    } catch (error) {
-      console.error("Food search error:", error);
-      setSearchResults([]);
-    } finally {
-      setSearching(false);
-    }
-  };
-
   const addFoodToMeal = (mealIndex, food) => {
     setMeals((prev) =>
       prev.map((meal, i) =>
@@ -125,8 +104,6 @@ export default function DietBuilder() {
           : meal
       )
     );
-    setSearchQuery("");
-    setSearchResults([]);
     setActiveMeal(null);
   };
 
@@ -267,18 +244,13 @@ export default function DietBuilder() {
 
       // ── 5. Mirror to Vault ─────────────────────────────────────────────────
       try {
-        const token = localStorage.getItem("token");
-        await fetch("http://localhost:8000/api/vault", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "diet",
-            category: "plan",
-            title: planName.trim(),
-            summary: `${selectedGoal} · ${cal} kcal · ${prot}g protein · ${meals.length} meals/day`,
-            content: { planId, name: planName.trim(), goal: selectedGoal, target_calories: cal, target_protein: prot, meals_per_day: meals.length },
-            source: "manual",
-          }),
+        await createVaultItem({
+          type: "diet",
+          category: "plan",
+          title: planName.trim(),
+          summary: `${selectedGoal} · ${cal} kcal · ${prot}g protein · ${meals.length} meals/day`,
+          content: { planId, name: planName.trim(), goal: selectedGoal, target_calories: cal, target_protein: prot, meals_per_day: meals.length },
+          source: "user",
         });
       } catch (vaultErr) {
         console.warn("Vault mirror failed (non-fatal):", vaultErr);
@@ -636,17 +608,8 @@ export default function DietBuilder() {
       {/* FOOD SEARCH MODAL */}
       {activeMeal !== null && (
         <FoodSearchModal
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          searchResults={searchResults}
-          searching={searching}
-          onSearch={handleFoodSearch}
           onSelectFood={(food) => addFoodToMeal(activeMeal, food)}
-          onClose={() => {
-            setActiveMeal(null);
-            setSearchQuery("");
-            setSearchResults([]);
-          }}
+          onClose={() => setActiveMeal(null)}
         />
       )}
 
@@ -1324,24 +1287,31 @@ function DailyTotalsCard({ totals, targets }) {
 // FOOD SEARCH MODAL
 // ============================================================================
 
-function FoodSearchModal({
-  searchQuery,
-  setSearchQuery,
-  searchResults,
-  searching,
-  onSearch,
-  onSelectFood,
-  onClose,
-}) {
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (searchQuery) {
-        onSearch(searchQuery);
-      }
-    }, 300);
+function FoodSearchModal({ onSelectFood, onClose }) {
+  // ✅ All search state lives inside the modal — no props, no infinite loop
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
 
+  useEffect(() => {
+    if (!searchQuery || searchQuery.trim().length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const results = await searchFoods(searchQuery);
+        setSearchResults(results || []);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 400);
+    // Cleanup cancels the timer if query changes before 400ms — no stale request fires
     return () => clearTimeout(timer);
-  }, [searchQuery, onSearch]);
+  }, [searchQuery]); // ✅ Only depends on the local string, never on a function reference
 
   return (
     <div
