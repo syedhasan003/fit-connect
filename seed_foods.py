@@ -343,7 +343,10 @@ def seed_foods_database(db: Session):
     Seed the foods table with all predefined foods.
     Run once after migrations.
     """
+    from datetime import datetime
+
     foods_data = get_seed_foods()
+    now = datetime.utcnow()
 
     print(f"Seeding {len(foods_data)} foods...")
 
@@ -366,7 +369,8 @@ def seed_foods_database(db: Session):
             common_serving_grams=food_dict["g"],
             source=FoodSource.SEEDED,
             is_verified=True,
-            times_used=0
+            times_used=0,
+            created_at=now,
         )
 
         db.add(food)

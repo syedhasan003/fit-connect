@@ -233,6 +233,8 @@ class MealTemplate(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     diet_plan_id = Column(Integer, ForeignKey("diet_plans.id"), nullable=False, index=True)
+    # Legacy column — kept with default=0 so old DB schema (meal_number NOT NULL) still accepts inserts
+    meal_number = Column(Integer, nullable=True, default=0)
     meal_time = Column(SQLEnum(MealTime), nullable=False)
     meal_name = Column(String(255), nullable=True)
     scheduled_time = Column(Time, nullable=True)
@@ -262,6 +264,18 @@ class MealFood(Base):
     fats = Column(Float, nullable=False)
     is_optional = Column(Boolean, nullable=False, default=False)
     substitution_group = Column(String(50), nullable=True)
+    # Legacy columns from original schema — kept with defaults to satisfy any old NOT NULL constraints
+    food_category = Column(String(10), nullable=True, default="other")
+    serving_size = Column(String(100), nullable=True, default="100g")
+    quantity = Column(Float, nullable=True, default=0.0)
+    unit = Column(String(50), nullable=True, default="g")
+    calories_per_serving = Column(Integer, nullable=True, default=0)
+    protein_per_serving = Column(Float, nullable=True, default=0.0)
+    carbs_per_serving = Column(Float, nullable=True, default=0.0)
+    fats_per_serving = Column(Float, nullable=True, default=0.0)
+    is_preferred = Column(Boolean, nullable=True, default=False)
+    user_rating = Column(Integer, nullable=True)
+    notes = Column(Text, nullable=True)
 
     meal_template = relationship("MealTemplate", back_populates="meal_foods")
     food = relationship("Food")

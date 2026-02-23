@@ -53,8 +53,8 @@ class DietPlanResponse(BaseModel):
     meals_per_day: int
     rest_day_calories: Optional[int] = None
     workout_day_calories: Optional[int] = None
-    start_date: date
-    created_at: datetime
+    start_date: Optional[date] = None       # nullable — old plans may not have this
+    created_at: Optional[datetime] = None   # nullable — some rows pre-date the column
 
     class Config:
         from_attributes = True
@@ -142,6 +142,7 @@ async def create_diet_plan(
         goal_type=data.goal_type,
         is_active=True,
         start_date=date.today(),
+        created_at=datetime.utcnow(),
         target_calories=data.target_calories,
         target_protein=data.target_protein,
         target_carbs=data.target_carbs,
