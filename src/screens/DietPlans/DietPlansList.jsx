@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import BottomNav from "../../components/navigation/BottomNav";
 import { fetchVaultItems, deleteVaultItem } from "../../api/vault";
-import { getActiveDietPlan, activateDietPlan, deleteDietPlan } from "../../api/diet";
+import { getActiveDietPlan, activateDietPlan, deleteDietPlan, getDietPlanById, getPlanMeals } from "../../api/diet";
 
 export default function DietPlansList() {
   const navigate = useNavigate();
@@ -13,6 +13,7 @@ export default function DietPlansList() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activating, setActivating] = useState(null);
   const [deleting, setDeleting] = useState(null);
+  const [editing, setEditing] = useState(null);
   const [toast, setToast] = useState(location.state?.savedPlan ? `"${location.state.savedPlan}" saved!` : null);
 
   // Auto-dismiss toast
@@ -55,6 +56,41 @@ export default function DietPlansList() {
       alert("Failed to set plan as active: " + (err.message || "Unknown error"));
     } finally {
       setActivating(null);
+    }
+  };
+
+  const handleEdit = async (plan) => {
+    const planId = plan.content?.planId;
+    if (!planId) {
+      alert("Cannot edit this plan — plan ID not found.");
+      return;
+    }
+    setEditing(plan.id);
+    try {
+      const [planData, meals] = await Promise.all([
+        getDietPlanById(planId),
+        getPlanMeals(planId).catch(() => []),
+      ]);
+      // Build the format DietBuilder expects
+      const editPayload = {
+        name:    planData.name,
+        goal:    planData.goal_type,
+        daily_calories: planData.target_calories,
+        daily_protein:  planData.target_protein,
+        rest_day_calories:    planData.rest_day_calories,
+        workout_day_calories: planData.workout_day_calories,
+        meals: meals.map(m => ({
+          name:   (m.meal_name || m.meal_time || '').charAt(0).toUpperCase() + (m.meal_name || m.meal_time || '').slice(1),
+          foods:  m.foods || [],
+          target_calories: m.target_calories,
+          meal_time: m.meal_time,
+        })),
+      };
+      navigate('/diet-builder', { state: { planData: editPayload, planId, vaultId: plan.id } });
+    } catch (err) {
+      alert("Failed to load plan for editing: " + (err.message || "Unknown error"));
+    } finally {
+      setEditing(null);
     }
   };
 
@@ -158,9 +194,11 @@ export default function DietPlansList() {
                 isActive={plan.content?.planId === activePlanId}
                 activating={activating === plan.id}
                 deleting={deleting === plan.id}
+                editing={editing === plan.id}
                 onSetActive={() => handleSetActive(plan)}
                 onLog={() => navigate("/meal-logging")}
                 onDelete={() => handleDelete(plan)}
+                onEdit={() => handleEdit(plan)}
               />
             ))}
           </div>
@@ -171,7 +209,7 @@ export default function DietPlansList() {
   );
 }
 
-function DietPlanCard({ plan, isActive, activating, deleting, onSetActive, onLog, onDelete }) {
+function DietPlanCard({ plan, isActive, activating, deleting, editing, onSetActive, onLog, onDelete, onEdit }) {
   const [hover, setHover] = useState(false);
   const content = typeof plan.content === "string" ? JSON.parse(plan.content) : plan.content;
   const accentColor = "#ec4899";
@@ -197,7 +235,7 @@ function DietPlanCard({ plan, isActive, activating, deleting, onSetActive, onLog
       {/* Active pill */}
       {isActive && (
         <div style={{
-          position: "absolute", top: 14, right: 44,
+          position: "absolute", top: 14, right: 78,
           padding: "4px 10px", borderRadius: 20,
           background: "rgba(0,255,136,0.15)", border: "1px solid rgba(0,255,136,0.3)",
           fontSize: 11, fontWeight: 700, color: "#00ff88",
@@ -206,17 +244,37 @@ function DietPlanCard({ plan, isActive, activating, deleting, onSetActive, onLog
         </div>
       )}
 
+      {/* Edit button */}
+      <button
+        onClick={onEdit}
+        disabled={editing || deleting}
+        title="Edit plan"
+        style={{
+          position: "absolute", top: 12, right: 46,
+          background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: 8, width: 28, height: 28,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: (editing || deleting) ? "default" : "pointer",
+          color: "rgba(255,255,255,0.4)", fontSize: 13, lineHeight: 1,
+          transition: "all 0.2s",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(99,102,241,0.2)"; e.currentTarget.style.borderColor = "rgba(99,102,241,0.4)"; e.currentTarget.style.color = "#818cf8"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}
+      >
+        {editing ? "…" : "✎"}
+      </button>
+
       {/* Delete button (top-right) */}
       <button
         onClick={onDelete}
-        disabled={deleting}
+        disabled={deleting || editing}
         title="Delete plan"
         style={{
           position: "absolute", top: 12, right: 12,
           background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
           borderRadius: 8, width: 28, height: 28,
           display: "flex", alignItems: "center", justifyContent: "center",
-          cursor: deleting ? "default" : "pointer",
+          cursor: (deleting || editing) ? "default" : "pointer",
           color: "rgba(255,255,255,0.4)", fontSize: 14, lineHeight: 1,
           transition: "all 0.2s",
         }}
@@ -226,7 +284,7 @@ function DietPlanCard({ plan, isActive, activating, deleting, onSetActive, onLog
         {deleting ? "…" : "✕"}
       </button>
 
-      <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 600, paddingRight: 80 }}>
+      <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 600, paddingRight: 116 }}>
         {plan.title || "Untitled Plan"}
       </h3>
       <p style={{ margin: "0 0 14px", fontSize: 13, color: "rgba(255,255,255,0.45)" }}>

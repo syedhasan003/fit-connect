@@ -111,7 +111,7 @@ export default function Vault() {
             subtitle="Medical documents"
             count={0}
             color="#10b981"
-            onClick={() => alert("Coming soon! Health Records for your medical documents.")}
+            onClick={() => navigate("/vault/health-records")}
             disabled
           />
         </div>

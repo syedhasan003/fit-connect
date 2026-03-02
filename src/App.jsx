@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import ProtectedRoute from "./auth/ProtectedRoute";
+import { AgentProvider } from "./context/AgentContext";
+import AgentToast from "./components/agent/AgentToast";
 
 import AuthLayout from "./components/layout/AuthLayout";
 
@@ -15,6 +17,9 @@ import WorkoutBuilder from "./screens/WorkoutBuilder";
 import DietBuilder from "./screens/DietBuilder";
 import Login from "./screens/Login";
 import Register from "./screens/Register";
+import Onboarding from "./screens/Onboarding";
+// HealthRecords deferred — import ready for when Phase 4 health records work begins
+// import HealthRecords from "./screens/HealthRecords";
 
 // Vault sub-routes
 import HealthTimeline from "./screens/HealthTimeline";
@@ -28,10 +33,22 @@ import DietPlansList from "./screens/DietPlans/DietPlansList";
 import Reminders from "./screens/Reminders";
 import CreateReminder from "./screens/Reminders/CreateReminder";
 import EditReminder from "./screens/Reminders/EditReminder";
+import MedicationToday from "./screens/Reminders/MedicationToday";
 
 // ✅ NEW: Tracking Screens
 import WorkoutTracking from "./screens/WorkoutTracking";
 import MealLogging from "./screens/MealLogging";
+
+// ✅ Weekly Progress
+import WeeklyProgress from "./screens/WeeklyProgress";
+
+// ✅ Phase 4: Exercise Library + Exercise Detail
+import ExerciseLibrary from "./screens/ExerciseLibrary";
+import ExerciseDetail  from "./screens/ExerciseDetail";
+
+// ✅ Phase 4: Medication History
+import MedicationHistory from "./screens/Reminders/MedicationHistory";
+
 
 function AppRoutes() {
   const { isAuthenticated, initialized } = useAuth();
@@ -65,6 +82,16 @@ function AppRoutes() {
               <Register />
             </AuthLayout>
           )
+        }
+      />
+
+      {/* ---------------- ONBOARDING (protected, no nav) ---------------- */}
+      <Route
+        path="/onboarding"
+        element={
+          <ProtectedRoute>
+            <Onboarding />
+          </ProtectedRoute>
         }
       />
 
@@ -105,6 +132,9 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
+      {/* ⏸️ HEALTH RECORDS — deferred, route removed until Phase is built */}
+      {/* <Route path="/vault/health-records" element={<ProtectedRoute><HealthRecords /></ProtectedRoute>} /> */}
 
       {/* ✅ VAULT SUB-ROUTES */}
       <Route
@@ -191,6 +221,15 @@ function AppRoutes() {
         }
       />
 
+      <Route
+        path="/reminders/medication-today"
+        element={
+          <ProtectedRoute>
+            <MedicationToday />
+          </ProtectedRoute>
+        }
+      />
+
       {/* ✅ WORKOUT & DIET ROUTES */}
       <Route
         path="/workout-builder"
@@ -229,6 +268,44 @@ function AppRoutes() {
         }
       />
 
+      {/* ✅ WEEKLY PROGRESS */}
+      <Route
+        path="/progress"
+        element={
+          <ProtectedRoute>
+            <WeeklyProgress />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* ✅ PHASE 4: EXERCISE LIBRARY & DETAIL */}
+      <Route
+        path="/exercise-library"
+        element={
+          <ProtectedRoute>
+            <ExerciseLibrary />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/exercises/:id"
+        element={
+          <ProtectedRoute>
+            <ExerciseDetail />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* ✅ PHASE 4: MEDICATION HISTORY */}
+      <Route
+        path="/reminders/medication-history"
+        element={
+          <ProtectedRoute>
+            <MedicationHistory />
+          </ProtectedRoute>
+        }
+      />
+
       <Route
         path="/profile"
         element={
@@ -253,7 +330,11 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <AppRoutes />
+        {/* AgentProvider owns the WebSocket + shared agent state */}
+        <AgentProvider>
+          <AgentToast />
+          <AppRoutes />
+        </AgentProvider>
       </BrowserRouter>
     </AuthProvider>
   );

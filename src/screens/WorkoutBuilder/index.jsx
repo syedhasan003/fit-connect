@@ -391,8 +391,9 @@ export default function WorkoutBuilder() {
 function DaySelector({ onSelect, onBack }) {
   const [hoveredDay, setHoveredDay] = useState(null);
   const dayOptions = [
+    { count: 2, label: "2 Days", description: "Upper/Lower split", color: "#22d3ee" },
     { count: 3, label: "3 Days", description: "Full body focus", color: "#10b981" },
-    { count: 4, label: "4 Days", description: "Upper/Lower split", color: "#3b82f6" },
+    { count: 4, label: "4 Days", description: "Push/Pull split", color: "#3b82f6" },
     { count: 5, label: "5 Days", description: "Push/Pull/Legs", color: "#8b5cf6" },
     { count: 6, label: "6 Days", description: "Advanced split", color: "#ec4899" },
     { count: 7, label: "7 Days", description: "Daily training", color: "#f59e0b" },
@@ -599,6 +600,7 @@ function AreaBlock({ area, dayIndex, muscleIndex, areaIndex, muscleName, open, s
 // ─── Exercise Card (collapsible) ──────────────────────────────────────────────
 function ExerciseCard({ exercise, onRemove, onAddSet, onUpdateSet, onRemoveSet }) {
   const [expanded, setExpanded] = useState(true);
+  const navigate = useNavigate();
   const doneSetCount = exercise.sets.filter(s => s.reps || s.weight).length;
 
   return (
@@ -638,9 +640,20 @@ function ExerciseCard({ exercise, onRemove, onAddSet, onUpdateSet, onRemoveSet }
               {expanded ? "▲" : "▼"}
             </span>
           </button>
+          {/* ℹ Info button → Exercise Library filtered by name */}
+          <button
+            onClick={e => { e.stopPropagation(); navigate("/exercise-library", { state: { search: exercise.name } }); }}
+            title="View exercise details"
+            style={{
+              width: 28, height: 28, borderRadius: "50%", border: "none",
+              background: "rgba(99,102,241,0.15)", color: "#818cf8",
+              cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center",
+              marginLeft: 6, fontWeight: 700, lineHeight: 1,
+            }}
+          >ℹ</button>
           <button onClick={onRemove} style={{
             width: 24, height: 24, borderRadius: "50%", border: "none",
-            background: "rgba(239,68,68,0.15)", color: "#ef4444", cursor: "pointer", fontSize: 12, marginLeft: 8,
+            background: "rgba(239,68,68,0.15)", color: "#ef4444", cursor: "pointer", fontSize: 12, marginLeft: 6,
           }}>✕</button>
         </div>
 

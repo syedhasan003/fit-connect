@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:8000';
+import { API_BASE } from "./config.js";
 
 function getAuthHeaders() {
   const token = localStorage.getItem('token');
@@ -165,6 +165,94 @@ export async function markReminderMissed(reminderId, reason = null) {
     console.error('Reminders API Error:', error);
     throw error;
   }
+}
+
+// ── Medication schedules ───────────────────────────────────────────────────
+
+export async function fetchMedicationSchedules() {
+  const r = await fetch(`${API_BASE}/medication/schedules`, { headers: getAuthHeaders() });
+  if (!r.ok) throw new Error("Failed to fetch medication schedules");
+  return r.json();
+}
+
+export async function createMedicationSchedule(data) {
+  const r = await fetch(`${API_BASE}/medication/schedules`, {
+    method: "POST", headers: getAuthHeaders(), body: JSON.stringify(data),
+  });
+  if (!r.ok) throw new Error("Failed to create medication schedule");
+  return r.json();
+}
+
+export async function updateMedicationSchedule(id, data) {
+  const r = await fetch(`${API_BASE}/medication/schedules/${id}`, {
+    method: "PATCH", headers: getAuthHeaders(), body: JSON.stringify(data),
+  });
+  if (!r.ok) throw new Error("Failed to update medication schedule");
+  return r.json();
+}
+
+export async function deleteMedicationSchedule(id) {
+  const r = await fetch(`${API_BASE}/medication/schedules/${id}`, {
+    method: "DELETE", headers: getAuthHeaders(),
+  });
+  if (!r.ok) throw new Error("Failed to delete medication schedule");
+  return r.json();
+}
+
+export async function fetchTodaysMedicationLogs() {
+  const r = await fetch(`${API_BASE}/medication/logs/today`, { headers: getAuthHeaders() });
+  if (!r.ok) throw new Error("Failed to fetch today's medication logs");
+  return r.json();
+}
+
+export async function markTabletTaken(logId, tabletStatuses) {
+  const r = await fetch(`${API_BASE}/medication/logs/${logId}/take`, {
+    method: "POST", headers: getAuthHeaders(), body: JSON.stringify(tabletStatuses),
+  });
+  if (!r.ok) throw new Error("Failed to update tablet status");
+  return r.json();
+}
+
+/**
+ * Fetch the last N days of medication logs.
+ * Returns array of log dicts: { id, schedule_id, log_date, tablets_status, fully_acknowledged }
+ */
+export async function fetchMedicationHistory(days = 30) {
+  const r = await fetch(`${API_BASE}/medication/logs/history?days=${days}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!r.ok) throw new Error("Failed to fetch medication history");
+  return r.json();
+}
+
+// ── Health records ────────────────────────────────────────────────────────
+
+export async function fetchHealthRecords(recordType = null, archived = false) {
+  const params = new URLSearchParams({ archived });
+  if (recordType) params.set("record_type", recordType);
+  const r = await fetch(`${API_BASE}/health-records/?${params}`, { headers: getAuthHeaders() });
+  if (!r.ok) throw new Error("Failed to fetch health records");
+  return r.json();
+}
+
+export async function createHealthRecord(formData) {
+  // formData is a FormData object (supports file uploads)
+  const token = localStorage.getItem("token");
+  const r = await fetch(`${API_BASE}/health-records/`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },  // no Content-Type — let browser set multipart boundary
+    body: formData,
+  });
+  if (!r.ok) throw new Error("Failed to create health record");
+  return r.json();
+}
+
+export async function deleteHealthRecord(id) {
+  const r = await fetch(`${API_BASE}/health-records/${id}`, {
+    method: "DELETE", headers: getAuthHeaders(),
+  });
+  if (!r.ok) throw new Error("Failed to delete health record");
+  return r.json();
 }
 
 // ✅ COMPLETE REMINDER (Late completion with reason)

@@ -20,19 +20,26 @@ export default function Login() {
       setLoading(true);
       setError(null);
 
-      console.log('🔐 Attempting login...');
       const res = await api.post("/auth/login", { email, password });
-      console.log('✅ Login response:', res.data);
-      
-      // This should save to localStorage via AuthContext
+
+      // Save token first so subsequent requests are authenticated
       login(res.data.access_token);
-      console.log('💾 Token passed to AuthContext');
-      
-      // Verify token was saved
-      const savedToken = localStorage.getItem('token');
-      console.log('🔍 Token in localStorage:', savedToken ? 'YES' : 'NO');
-      
-      navigate("/home");
+
+      // Check if this user has completed onboarding
+      // If the status check fails for any reason, send to onboarding (safe default)
+      try {
+        const statusRes = await api.get("/onboarding/status", {
+          headers: { Authorization: `Bearer ${res.data.access_token}` },
+        });
+        if (statusRes.data.onboarding_completed) {
+          navigate("/home");
+        } else {
+          navigate("/onboarding");
+        }
+      } catch {
+        // Status check failed — default to onboarding (better safe than skip)
+        navigate("/onboarding");
+      }
     } catch (err) {
       console.error('❌ Login error:', err);
       setError("Invalid email or password");

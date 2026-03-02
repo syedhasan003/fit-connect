@@ -2,6 +2,16 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import BottomNav from "../../components/navigation/BottomNav";
 import { fetchVaultItemById, deleteVaultItem, updateVaultItem } from "../../api/vault";
+import MarkdownRenderer from "../../components/central/MarkdownRenderer";
+
+// Content saved from Central is { raw: "markdown string", ... }
+// Older items may have stored it as a plain string. Handle both.
+function extractRawContent(content) {
+  if (!content) return "";
+  if (typeof content === "string") return content;
+  if (typeof content === "object") return content.raw || JSON.stringify(content, null, 2);
+  return String(content);
+}
 
 export default function CentralAnswerDetail() {
   const navigate = useNavigate();
@@ -174,11 +184,10 @@ export default function CentralAnswerDetail() {
           <div style={{ position: "relative", zIndex: 1 }}>
             <div style={{
               fontSize: 15,
-              lineHeight: 1.7,
+              lineHeight: 1.75,
               color: "rgba(255,255,255,0.85)",
-              whiteSpace: "pre-wrap",
             }}>
-              {answer.content}
+              <MarkdownRenderer text={extractRawContent(answer.content)} />
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:8000';
+import { API_BASE } from "./config.js";
 
 function getAuthHeaders() {
   const token = localStorage.getItem('token');
@@ -145,6 +145,20 @@ export async function getTodaysMeals() {
     headers: getAuthHeaders(),
   });
   return handleResponse(res, "Failed to fetch today's meals");
+}
+
+export async function getYesterdaysMeals() {
+  const res = await fetch(`${API_BASE}/api/diet/logs/yesterday`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, "Failed to fetch yesterday's meals");
+}
+
+export async function getRecentFoods(limit = 20) {
+  const res = await fetch(`${API_BASE}/api/diet/foods/recent?limit=${limit}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Failed to fetch recent foods');
 }
 
 export async function getWeeklyStats() {

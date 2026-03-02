@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:8000';
+import { API_BASE } from "./config.js";
 
 function getAuthHeaders() {
   const token = localStorage.getItem('token');
@@ -60,13 +60,13 @@ export async function logExerciseSet(sessionId, exerciseData) {
   }
 }
 
-// ✅ COMPLETE WORKOUT SESSION  (fixed: POST → PATCH, added body {})
-export async function completeWorkoutSession(sessionId) {
+// ✅ COMPLETE WORKOUT SESSION
+export async function completeWorkoutSession(sessionId, extraData = {}) {
   try {
     const response = await fetch(`${API_BASE}/api/workouts/sessions/${sessionId}/complete`, {
       method: 'PATCH',
       headers: getAuthHeaders(),
-      body: JSON.stringify({}),
+      body: JSON.stringify(extraData),
     });
     if (response.status === 401) throw new Error('Authentication failed. Please log in again.');
     if (!response.ok) throw new Error(`Failed to complete session: ${response.statusText}`);
@@ -109,6 +109,19 @@ export async function getWorkoutProgram(programId) {
   } catch (error) {
     console.error('Workout API Error:', error);
     throw error;
+  }
+}
+
+// ✅ GET PREVIOUS SESSION DATA (for "Last: Xkg × Y" display)
+export async function getPreviousSession(programId, dayNumber) {
+  try {
+    const url = `${API_BASE}/api/workouts/sessions/previous?program_id=${programId}&day_number=${dayNumber}`;
+    const response = await fetch(url, { method: 'GET', headers: getAuthHeaders() });
+    if (response.status === 401) throw new Error('Authentication failed.');
+    if (!response.ok) return { found: false, exercises_data: {} };
+    return response.json();
+  } catch (error) {
+    return { found: false, exercises_data: {} };
   }
 }
 

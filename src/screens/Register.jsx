@@ -1,15 +1,18 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
+import { useAuth } from "../auth/AuthContext";
 
 export default function Register() {
   const navigate = useNavigate();
+  const { login } = useAuth();
 
-  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("user");
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [role, setRole]         = useState("user");
+  const [error, setError]       = useState(null);
+  const [loading, setLoading]   = useState(false);
 
   const handleRegister = async () => {
     if (!email || !password) return;
@@ -18,8 +21,18 @@ export default function Register() {
       setLoading(true);
       setError(null);
 
-      await api.post("/auth/register", { email, password, role });
-      navigate("/login");
+      // Register the account
+      await api.post("/auth/register", {
+        email,
+        password,
+        full_name: fullName.trim() || undefined,
+        role,
+      });
+
+      // Auto-login so the user flows straight into onboarding
+      const res = await api.post("/auth/login", { email, password });
+      login(res.data.access_token);
+      navigate("/onboarding");
     } catch {
       setError("Registration failed. Try another email.");
     } finally {
@@ -33,6 +46,13 @@ export default function Register() {
         <h1>Create account</h1>
         <p style={{ opacity: 0.7 }}>Start your fitness journey</p>
       </div>
+
+      <input
+        placeholder="Full name"
+        value={fullName}
+        onChange={(e) => setFullName(e.target.value)}
+        style={inputStyle}
+      />
 
       <input
         placeholder="Email"
@@ -77,7 +97,8 @@ export default function Register() {
       </button>
 
       <p style={{ fontSize: 14, opacity: 0.7 }}>
-        Already have an account? <a href="/login" style={{ color: "#fff" }}>Login</a>
+        Already have an account?{" "}
+        <a href="/login" style={{ color: "#fff" }}>Login</a>
       </p>
     </div>
   );
