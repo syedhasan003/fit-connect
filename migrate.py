@@ -86,7 +86,71 @@ def run_migrations():
         ("meal_foods",       "fats",                  "ALTER TABLE meal_foods ADD COLUMN fats FLOAT NOT NULL DEFAULT 0"),
         ("meal_foods",       "is_optional",           "ALTER TABLE meal_foods ADD COLUMN is_optional BOOLEAN NOT NULL DEFAULT 0"),
         ("meal_foods",       "substitution_group",    "ALTER TABLE meal_foods ADD COLUMN substitution_group VARCHAR(50)"),
+
+        # workout_sessions — store per-exercise set data for history
+        ("workout_sessions", "exercises_data",        "ALTER TABLE workout_sessions ADD COLUMN exercises_data TEXT"),
+        ("workout_sessions", "program_id",            "ALTER TABLE workout_sessions ADD COLUMN program_id INTEGER"),
+        ("workout_sessions", "day_number",            "ALTER TABLE workout_sessions ADD COLUMN day_number INTEGER"),
     ]
+
+    # New tables (CREATE IF NOT EXISTS — safe to run any time)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS body_weight_logs (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL REFERENCES users(id),
+            weight_kg  REAL    NOT NULL,
+            logged_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+            note       TEXT
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_bwl_user ON body_weight_logs(user_id)")
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS water_logs (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id        INTEGER NOT NULL REFERENCES users(id),
+            date           DATE    NOT NULL,
+            glasses        INTEGER NOT NULL DEFAULT 0,
+            target_glasses INTEGER NOT NULL DEFAULT 8,
+            UNIQUE(user_id, date)
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_wl_user_date ON water_logs(user_id, date)")
+
+    # user_ai_preferences table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS user_ai_preferences (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id          INTEGER NOT NULL REFERENCES users(id),
+            preference_type  TEXT NOT NULL,
+            data             JSON NOT NULL DEFAULT '{}',
+            locked_at        DATETIME DEFAULT (datetime('now')),
+            updated_at       DATETIME DEFAULT (datetime('now')),
+            UNIQUE(user_id, preference_type)
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_uap_user ON user_ai_preferences(user_id)")
+
+    # vault_folders table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS vault_folders (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL REFERENCES users(id),
+            name        TEXT NOT NULL,
+            color       TEXT DEFAULT '#6366F1',
+            created_at  DATETIME DEFAULT (datetime('now'))
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_vf_user ON vault_folders(user_id)")
+
+    # Add folder_id to vault_items (if not exists)
+    cur.execute("PRAGMA table_info(vault_items)")
+    vault_cols = [row[1] for row in cur.fetchall()]
+    if "folder_id" not in vault_cols:
+        cur.execute("ALTER TABLE vault_items ADD COLUMN folder_id INTEGER REFERENCES vault_folders(id)")
+        print("  added — vault_items.folder_id")
+    else:
+        print("  already exists — vault_items.folder_id")
 
     for table, col, sql in migrations:
         # Check if column already exists

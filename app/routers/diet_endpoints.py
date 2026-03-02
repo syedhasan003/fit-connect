@@ -15,6 +15,7 @@ from app.models.fitness_tracking import (
     DietPlan, MealTemplate, MealFood, MealLog, Food, FoodPreference,
     GoalType, MealTime, FoodSource
 )
+from app.models.food import FoodItem
 from app.deps import get_current_user
 
 router = APIRouter(prefix="/api/diet", tags=["Diet & Nutrition"])
@@ -490,6 +491,26 @@ async def log_meal(
 
     db.commit()
 
+    # ── Write health memory (fire-and-forget) ──────────────────────────────
+    try:
+        from app.services.memory_writer import write_meal_memory
+        food_names = [f.get("name", "") for f in data.foods_eaten if f.get("name")]
+        write_meal_memory(
+            db=db,
+            user_id=current_user.id,
+            meal_time=data.meal_name or "meal",
+            calories=total_calories,
+            protein_g=total_protein,
+            carbs_g=total_carbs,
+            fats_g=total_fats,
+            foods=food_names,
+            diet_plan_name=diet_plan.name if diet_plan else None,
+        )
+    except Exception as _mem_err:
+        import logging
+        logging.getLogger(__name__).warning(f"[diet_endpoints] memory write failed: {_mem_err}")
+    # ──────────────────────────────────────────────────────────────────────
+
     return log
 
 
@@ -567,6 +588,32 @@ async def get_todays_meals(
 # FOOD SEARCH & DATABASE
 # ============================================================================
 
+def _normalize(value: float, serving_size: float) -> float:
+    """Convert a nutrient value stored per serving_size to per 100 g."""
+    if not serving_size or serving_size <= 0:
+        return value
+    return round(value * 100.0 / serving_size, 2)
+
+
+def _food_item_to_response(item: FoodItem) -> dict:
+    """Map a FoodItem (food_items table) to the FoodSearchResponse shape."""
+    s = item.serving_size or 100.0
+    return {
+        "id":                  item.id + 1_000_000,  # offset to avoid ID clash with Food table
+        "name":                item.name,
+        "brand":               getattr(item, "brand", None),
+        "category":            item.category,
+        "calories_per_100g":   int(_normalize(item.calories or 0, s)),
+        "protein_per_100g":    _normalize(item.protein or 0, s),
+        "carbs_per_100g":      _normalize(item.carbs or 0, s),
+        "fats_per_100g":       _normalize(item.fat or 0, s),
+        "common_serving":      item.serving_label or f"{int(s)} {item.serving_unit or 'g'}",
+        "common_serving_grams": s,
+        "times_used":          0,
+        "source":              "usda",
+    }
+
+
 @router.get("/foods/search", response_model=List[FoodSearchResponse])
 async def search_foods(
     q: str = Query(..., min_length=2, description="Search query"),
@@ -576,26 +623,44 @@ async def search_foods(
 ):
     """
     Search foods database.
-    Prioritizes: user's custom foods > frequently used > seeded database.
+    Prioritizes: user's custom foods > frequently used > USDA food_items.
     """
     search_term = f"%{q.lower()}%"
+    half = max(limit // 2, 10)
 
-    # Search with priority
-    foods = db.query(Food).filter(
+    # ── 1. Search old Food table (user-custom + previously logged) ────────────
+    legacy_foods = db.query(Food).filter(
         or_(
             Food.name.ilike(search_term),
             Food.brand.ilike(search_term)
         )
     ).order_by(
-        # Prioritize user's custom foods
         (Food.user_id == current_user.id).desc(),
-        # Then by usage frequency
         Food.times_used.desc(),
-        # Then verified foods
         Food.is_verified.desc()
-    ).limit(limit).all()
+    ).limit(half).all()
 
-    return foods
+    results = list(legacy_foods)
+
+    # ── 2. Fill remaining slots from FoodItem (USDA + seeded) ────────────────
+    remaining = limit - len(results)
+    if remaining > 0:
+        fi_rows = db.query(FoodItem).filter(
+            or_(
+                FoodItem.name.ilike(search_term),
+                FoodItem.category.ilike(search_term)
+            ),
+            FoodItem.is_active == True  # noqa: E712
+        ).order_by(
+            FoodItem.is_indian.desc(),   # surface Indian foods first
+            FoodItem.name.asc()
+        ).limit(remaining).all()
+
+        # Convert to dict so Pydantic can coerce without needing from_attributes
+        for item in fi_rows:
+            results.append(_food_item_to_response(item))
+
+    return results
 
 
 @router.post("/foods/custom", response_model=FoodSearchResponse, status_code=status.HTTP_201_CREATED)
@@ -645,17 +710,121 @@ async def get_popular_foods(
     current_user = Depends(get_current_user)
 ):
     """
-    Get most commonly used foods.
-    Used for quick meal building.
+    Get most commonly used / featured foods.
+    Returns user's frequently used foods + a curated selection of Indian and
+    healthy items from the USDA food_items table.
     """
-    foods = db.query(Food).filter(
+    half = max(limit // 2, 10)
+
+    # User's own frequently-used foods
+    legacy = db.query(Food).filter(
         or_(
             Food.source == FoodSource.SEEDED,
             Food.user_id == current_user.id
         )
-    ).order_by(Food.times_used.desc()).limit(limit).all()
+    ).order_by(Food.times_used.desc()).limit(half).all()
 
-    return foods
+    results = list(legacy)
+
+    # Fill remaining with Indian + healthy USDA foods
+    remaining = limit - len(results)
+    if remaining > 0:
+        fi_rows = db.query(FoodItem).filter(
+            FoodItem.is_active == True  # noqa: E712
+        ).order_by(
+            FoodItem.is_indian.desc(),
+            FoodItem.name.asc()
+        ).limit(remaining).all()
+        for item in fi_rows:
+            results.append(_food_item_to_response(item))
+
+    return results
+
+
+@router.get("/foods/recent")
+async def get_recent_foods(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Get the user's most recently and frequently logged foods.
+    Sourced from FoodPreference (updated every time a meal is logged).
+    Returns them in FoodSearchResponse format so the modal can use them directly.
+    """
+    prefs = db.query(FoodPreference).filter(
+        FoodPreference.user_id == current_user.id
+    ).order_by(
+        FoodPreference.last_observed.desc(),
+        FoodPreference.times_eaten.desc()
+    ).limit(limit).all()
+
+    results = []
+    for pref in prefs:
+        # Try to find matching food in foods table
+        food = db.query(Food).filter(
+            Food.name.ilike(pref.food_name)
+        ).order_by(Food.times_used.desc()).first()
+
+        if food:
+            results.append({
+                "id": food.id,
+                "name": food.name,
+                "brand": food.brand,
+                "category": food.category,
+                "calories_per_100g": food.calories_per_100g,
+                "protein_per_100g": food.protein_per_100g,
+                "carbs_per_100g": food.carbs_per_100g,
+                "fats_per_100g": food.fats_per_100g,
+                "common_serving": food.common_serving,
+                "common_serving_grams": food.common_serving_grams,
+                "times_used": pref.times_eaten,
+                "source": food.source.value if hasattr(food.source, 'value') else str(food.source),
+            })
+
+    return results
+
+
+@router.get("/logs/yesterday")
+async def get_yesterdays_meals(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Get all meals logged yesterday.
+    Used for quick-repeat feature in meal logging.
+    """
+    from datetime import timedelta
+
+    now_utc = datetime.utcnow()
+    yesterday_start = (now_utc - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday_end   = (now_utc - timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    logs = db.query(MealLog).filter(
+        MealLog.user_id == current_user.id,
+        MealLog.logged_at >= yesterday_start,
+        MealLog.logged_at <= yesterday_end,
+    ).order_by(MealLog.logged_at.asc()).all()
+
+    serialized = []
+    for log in logs:
+        meal_name = log.meal_name
+        if not meal_name and log.meal_template_id:
+            tmpl = db.query(MealTemplate).filter(MealTemplate.id == log.meal_template_id).first()
+            if tmpl:
+                meal_name = tmpl.meal_time
+        serialized.append({
+            "id": log.id,
+            "meal_name": meal_name or "extra",
+            "foods_eaten": log.foods_eaten or [],
+            "total_calories": log.total_calories,
+            "total_protein": log.total_protein,
+            "total_carbs": log.total_carbs,
+            "total_fats": log.total_fats,
+            "logged_at": log.logged_at.isoformat() if log.logged_at else None,
+        })
+
+    return {"meals": serialized}
 
 
 @router.patch("/foods/{food_id}/use")

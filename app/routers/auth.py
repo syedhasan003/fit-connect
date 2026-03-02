@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from datetime import timedelta
 
 from app.db.database import get_db
 from app.schemas.user import UserCreate, UserOut
@@ -28,10 +27,17 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Email already registered")
 
     hashed = get_password_hash(user_in.password)
+
+    # Role is provided by the client (gym_owner | user). Admin can never self-register.
+    role = user_in.role.value if user_in.role else "user"
+    if role == "admin":
+        role = "user"  # safety guard — admins are assigned manually
+
     user = User(
         email=user_in.email,
         full_name=user_in.full_name,
         hashed_password=hashed,
+        role=role,
     )
 
     db.add(user)
@@ -51,10 +57,9 @@ def login(credentials: LoginSchema, db: Session = Depends(get_db)):
             detail="Invalid credentials"
         )
 
-    # === IMPORTANT: Token must include ROLE ===
     token = create_access_token({
         "sub": str(user.id),
-        "role": user.role
+        "role": user.role,
     })
 
     return {"access_token": token, "token_type": "bearer"}

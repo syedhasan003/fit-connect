@@ -112,6 +112,10 @@ class WorkoutSession(Base):
     soreness_level_end = deferred(Column(Integer, nullable=True))
     notes = deferred(Column(Text, nullable=True))
     ai_feedback = deferred(Column(Text, nullable=True))
+    # Previous session tracking (added by migration)
+    exercises_data = deferred(Column(Text, nullable=True))   # JSON blob: {exerciseName: [{weight, reps, done}]}
+    program_id = deferred(Column(Integer, nullable=True))
+    day_number = deferred(Column(Integer, nullable=True))
 
     # Relationships
     user = relationship("User", back_populates="workout_sessions")
@@ -390,3 +394,29 @@ class Food(Base):
     created_at = Column(DateTime, nullable=False)
 
     user = relationship("User", back_populates="custom_foods")
+
+# ============================================================================
+# BODY METRICS — Weight + Water
+# ============================================================================
+
+class BodyWeightLog(Base):
+    """Daily body weight entries"""
+    __tablename__ = "body_weight_logs"
+
+    id       = Column(Integer, primary_key=True, index=True)
+    user_id  = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    weight_kg = Column(Float, nullable=False)
+    logged_at = Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
+    note     = Column(String(200), nullable=True)
+
+
+class WaterLog(Base):
+    """Daily water intake tracker (one row per user per date)"""
+    __tablename__ = "water_logs"
+    __table_args__ = (UniqueConstraint("user_id", "date"),)
+
+    id             = Column(Integer, primary_key=True, index=True)
+    user_id        = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    date           = Column(Date, nullable=False)
+    glasses        = Column(Integer, nullable=False, default=0)
+    target_glasses = Column(Integer, nullable=False, default=8)

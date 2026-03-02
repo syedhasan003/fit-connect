@@ -1,344 +1,966 @@
-from fastapi import APIRouter, Depends, HTTPException
+"""
+ai_central.py
+Central AI Brain — streaming, intent-aware, preference-driven, memory-rich.
+
+Endpoints:
+  POST /ai/central/stream          — SSE streaming response (primary)
+  POST /ai/central/ask             — Non-streaming fallback (legacy compat)
+  GET  /ai/central/preferences/{type}  — Get stored prefs
+  POST /ai/central/preferences     — Save/update preferences
+  DELETE /ai/central/preferences/{type} — Clear preferences (re-onboard)
+  POST /ai/central/dislike         — Log a disliked exercise or food item
+  GET  /ai/central/questions/{type} — Get question list for a flow type
+"""
+
+import json
+import logging
+import re
+from datetime import datetime, timezone, timedelta
+from typing import AsyncGenerator
+
+from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from openai import OpenAI
-import os
 
 from app.db.database import get_db
-from app.models.health_memory import HealthMemory
-from app.models.vault_item import VaultItem
-from app.models.user import User
 from app.deps import get_current_user
-from app.schemas.central import CentralQuestion, CentralAnswer
+from app.models.health_memory import HealthMemory
+from app.models.fitness_tracking import (
+    WorkoutSession, SessionStatus, MealLog, BodyWeightLog, WaterLog
+)
+from app.models.user import User
+from app.services.memory_writer import get_disliked_items, write_disliked_item
+from app.services.preference_manager import (
+    get_preferences, save_preferences, clear_preferences, get_questions,
+)
 
-# Orchestrator components
-from app.ai.memory.context_builder import ContextBuilder
-from app.ai.agent_registry import AgentRegistry
-from app.ai.orchestrator.collaboration_manager import CollaborationManager
-from app.ai.orchestrator.state_manager import state_manager
-from app.ai.orchestrator.central_agent import CentralAgent
-from app.ai.orchestrator.reflection_engine import ReflectionEngine
-from app.ai.agents.coach_agent import CoachAgent
-from app.ai.agents.dietician_agent import DieticianAgent
-
-router = APIRouter(prefix="/ai/central", tags=["Central AI"])
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-# Initialize orchestrator components (singleton pattern)
-_registry = None
-_central_agent = None
-
-def get_orchestrator():
-    """Lazy initialization of orchestrator components"""
-    global _registry, _central_agent
-    
-    if _registry is None:
-        _registry = AgentRegistry()
-        collab_manager = CollaborationManager(_registry, state_manager)
-        _central_agent = CentralAgent(_registry, collab_manager)
-        
-        _registry.register("central", _central_agent)
-        _registry.register("coach", CoachAgent())
-        _registry.register("dietician", DieticianAgent())
-    
-    return _central_agent
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/ai/central", tags=["AI Central"])
 
 
-def format_agent_response(agent_result) -> str:
+# ─────────────────────────────────────────────────────────────
+# OpenAI client (lazy async)
+# ─────────────────────────────────────────────────────────────
+
+_openai_client = None
+
+def _get_openai():
+    global _openai_client
+    if _openai_client is None:
+        from openai import AsyncOpenAI
+        import os
+        _openai_client = AsyncOpenAI(
+            api_key=os.getenv("OPENAI_API_KEY"),
+            timeout=90.0,       # outer wall-clock timeout (streaming can be slow for long plans)
+            max_retries=2,      # auto-retry transient 5xx / network errors
+        )
+    return _openai_client
+
+
+# ─────────────────────────────────────────────────────────────
+# Schemas
+# ─────────────────────────────────────────────────────────────
+
+class AskRequest(BaseModel):
+    question: str
+    conversation_history: list = []   # [{role, content}]
+    flow_context: dict = {}           # {intent, answers, preferences}
+
+
+class PreferenceSaveRequest(BaseModel):
+    preference_type: str   # 'workout' | 'meal'
+    data: dict
+
+
+class DislikeRequest(BaseModel):
+    item_type: str    # 'exercise' | 'food' | 'ingredient'
+    item_name: str
+    context: str = None
+
+
+# ─────────────────────────────────────────────────────────────
+# Intent detection (keyword matching, zero API cost)
+# ─────────────────────────────────────────────────────────────
+
+_INTENT_PATTERNS = {
+    "workout": [
+        r"create.*workout", r"build.*workout", r"make.*workout", r"generate.*workout",
+        r"workout.*plan", r"training.*plan", r"exercise.*plan", r"new.*program",
+        r"build.*program", r"create.*program", r"gym.*program", r"workout.*routine",
+        r"training.*routine", r"design.*workout", r"new.*routine",
+        r"what.*exercises", r"which.*exercises", r"leg.*day", r"chest.*day",
+        r"push.*day", r"pull.*day", r"upper.*body", r"lower.*body",
+    ],
+    "meal": [
+        r"meal.*plan", r"diet.*plan", r"food.*plan", r"create.*diet",
+        r"design.*meal", r"what.*should.*eat", r"nutrition.*plan",
+        r"eating.*plan", r"generate.*meal", r"make.*meal.*plan",
+        r"meal.*schedule", r"what.*eat", r"food.*today", r"breakfast.*lunch.*dinner",
+        r"calorie.*target", r"macro.*target",
+    ],
+    "motivate": [
+        r"motivat", r"hype me", r"inspire me", r"i need.*push",
+        r"feeling.*lazy", r"don.*want.*workout", r"keep.*going",
+        r"encourage", r"pump me up", r"need.*motivation",
+        r"struggling", r"want to quit", r"hard.*today", r"not feeling it",
+        r"burnout", r"demotivat",
+    ],
+    "progress": [
+        r"analyz.*progress", r"my progress", r"how.*i.*doing", r"progress.*report",
+        r"weekly.*summary", r"show.*stats", r"how.*been.*doing",
+        r"progress.*check", r"fitness.*summary", r"my.*stats",
+        r"am i improving", r"have i improved", r"results", r"how.*performing",
+        r"plateau", r"stuck",
+    ],
+    "reminder": [
+        r"set.*reminder", r"remind me", r"create.*reminder",
+        r"schedule.*reminder", r"add.*reminder", r"new.*reminder",
+        r"reminder.*for", r"alert.*me", r"notify.*me",
+        r"remind.*workout", r"remind.*meal", r"remind.*medication",
+        r"remind.*medicine", r"remind.*tablet", r"remind.*checkup",
+        r"remind.*doctor", r"remind.*appointment",
+    ],
+    "medication": [
+        r"did.*take.*medication", r"did.*take.*medicine", r"did.*take.*tablet",
+        r"my.*medication", r"medication.*today", r"tablets.*today",
+        r"medication.*schedule", r"my.*pills", r"medicine.*reminder",
+        r"check.*medication", r"medication.*log",
+    ],
+}
+
+# ── Agent routing table: intent → specialist persona label ────────────────────
+_INTENT_AGENT = {
+    "workout":    "🏋️ Personal Trainer",
+    "meal":       "🥗 Sports Dietician",
+    "motivate":   "🧠 Mindset Coach",
+    "progress":   "📊 Performance Analyst",
+    "reminder":   "⏰ Routine Manager",
+    "medication": "💊 Health Monitor",
+    "general":    "🤖 Central AI",
+}
+
+def detect_intent(text: str) -> str:
     """
-    Convert structured agent response to beautiful markdown.
-    Handles both dict responses and string responses.
+    Fast keyword-based intent detection.
+    Handles the vast majority of clear requests in <1ms with zero API cost.
+    Ambiguous short messages fall through to 'general' (handled by GPT context).
     """
-    if isinstance(agent_result, str):
-        return agent_result
-    
-    if not isinstance(agent_result, dict):
-        return str(agent_result)
-    
-    # Extract fields
-    title = agent_result.get("title", "")
-    message = agent_result.get("message", "")
-    summary = agent_result.get("summary", "")
-    mindset_reframe = agent_result.get("mindset_reframe", "")
-    suggestions = agent_result.get("suggestions", [])
-    actions = agent_result.get("actions", [])
-    next_steps = agent_result.get("next_steps", "")
-    safety_notes = agent_result.get("safety_notes", "")
-    exercises = agent_result.get("exercises", [])
-    meals = agent_result.get("meals", [])
-    
-    # Build markdown
-    parts = []
-    
-    # Title (bold and prominent)
-    if title:
-        parts.append(f"**{title}**\n")
-    
-    # Main message/summary
-    if message:
-        parts.append(message)
-    elif summary:
-        parts.append(summary)
-    
-    # Exercises (for workout plans)
-    if exercises:
-        parts.append("\n### 🏋️ Your Workout")
-        for i, ex in enumerate(exercises, 1):
-            if isinstance(ex, dict):
-                name = ex.get("name", "Exercise")
-                sets = ex.get("sets", "")
-                reps = ex.get("reps", "")
-                rest = ex.get("rest", "")
-                notes = ex.get("notes", "")
-                parts.append(f"{i}. **{name}**")
-                if sets and reps:
-                    parts.append(f"   - {sets} sets × {reps} reps" + (f" • Rest: {rest}" if rest else ""))
-                if notes:
-                    parts.append(f"   - {notes}")
-            else:
-                parts.append(f"{i}. {ex}")
-    
-    # Meals (for diet plans)
-    if meals:
-        parts.append("\n### 🍽️ Your Meal Plan")
-        for i, meal in enumerate(meals, 1):
-            if isinstance(meal, dict):
-                name = meal.get("name", "Meal")
-                foods = meal.get("foods", [])
-                parts.append(f"{i}. **{name}**")
-                for food in foods:
-                    parts.append(f"   - {food}")
-            else:
-                parts.append(f"{i}. {meal}")
-    
-    # Mindset reframe (special formatting)
-    if mindset_reframe:
-        parts.append(f"\n### 💭 Mindset Shift\n{mindset_reframe}")
-    
-    # Suggestions
-    if suggestions:
-        parts.append("\n### 💡 Tips")
-        for suggestion in suggestions:
-            if isinstance(suggestion, dict):
-                parts.append(f"- {suggestion.get('text', suggestion.get('tip', str(suggestion)))}")
-            else:
-                parts.append(f"- {suggestion}")
-    
-    # Actions (actionable tips)
-    if actions:
-        parts.append("\n### ✅ Action Steps")
-        for i, action in enumerate(actions, 1):
-            if isinstance(action, dict):
-                tip = action.get("tip", action.get("action", str(action)))
-                parts.append(f"{i}. {tip}")
-            else:
-                parts.append(f"{i}. {action}")
-    
-    # Next steps
-    if next_steps:
-        parts.append(f"\n### 🎯 Next Steps\n{next_steps}")
-    
-    # Safety notes (always at the end)
-    if safety_notes:
-        parts.append(f"\n---\n\n*{safety_notes}*")
-    
-    return "\n".join(parts) if parts else "I'm here to help! What would you like to know?"
+    t = text.lower().strip()
+    for intent, patterns in _INTENT_PATTERNS.items():
+        for pat in patterns:
+            if re.search(pat, t):
+                return intent
+    return "general"
 
 
-@router.post("/ask", response_model=CentralAnswer)
-async def ask_central_ai(
-    payload: CentralQuestion,
+# ─────────────────────────────────────────────────────────────
+# Rich context builder
+# ─────────────────────────────────────────────────────────────
+
+def build_rich_context(db: Session, user: User) -> dict:
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    week_ago = now - timedelta(days=7)
+    three_days_ago = now - timedelta(days=3)
+
+    # Layer 1–6 context — ordered by signal quality (highest first)
+    ctx = {
+        "user_name": getattr(user, "full_name", None) or getattr(user, "name", "User"),
+        "daily_narratives": [],      # Layer 1 — synthesised daily summaries (best signal)
+        "morning_brief": None,       # Layer 2 — today's AI brief
+        "weekly_adaptation": None,   # Layer 5 — latest adaptation report
+        "correlation_insights": [],  # Layer 4 — data-driven patterns
+        "recent_workouts": [],       # Raw — last 7 days
+        "recent_meals": [],          # Raw — last 3 days
+        "weight_history": [],        # Raw — last 14 entries
+        "water_today": None,
+        "health_memories": [],       # Raw events (supplementary, non-agent)
+        "disliked_items": {"exercises": [], "foods": []},
+    }
+
+    # ── Layer 1: Daily narratives (last 7 days) ───────────────────────────────
+    try:
+        narratives = (
+            db.query(HealthMemory)
+            .filter(
+                HealthMemory.user_id == user.id,
+                HealthMemory.category == "daily_narrative",
+            )
+            .order_by(HealthMemory.created_at.desc())
+            .limit(7)
+            .all()
+        )
+        ctx["daily_narratives"] = [
+            {
+                "date": m.content.get("date", "?"),
+                "summary": m.content.get("narrative", ""),
+            }
+            for m in reversed(narratives)  # chronological order
+            if m.content.get("narrative")
+        ]
+    except Exception as e:
+        logger.debug(f"[Context] narratives: {e}")
+
+    # ── Layer 2: Today's morning brief ───────────────────────────────────────
+    try:
+        brief = (
+            db.query(HealthMemory)
+            .filter(
+                HealthMemory.user_id == user.id,
+                HealthMemory.category == "morning_brief",
+            )
+            .order_by(HealthMemory.created_at.desc())
+            .first()
+        )
+        if brief and brief.content.get("brief"):
+            ctx["morning_brief"] = {
+                "date": brief.content.get("date"),
+                "text": brief.content.get("brief"),
+                "stats": brief.content.get("stats", {}),
+            }
+    except Exception as e:
+        logger.debug(f"[Context] morning_brief: {e}")
+
+    # ── Layer 4: Correlation insights ────────────────────────────────────────
+    try:
+        corr = (
+            db.query(HealthMemory)
+            .filter(
+                HealthMemory.user_id == user.id,
+                HealthMemory.category == "correlation_insight",
+            )
+            .order_by(HealthMemory.created_at.desc())
+            .first()
+        )
+        if corr and corr.content.get("insights"):
+            ctx["correlation_insights"] = [
+                i.get("insight", "") for i in corr.content["insights"] if i.get("insight")
+            ]
+    except Exception as e:
+        logger.debug(f"[Context] correlations: {e}")
+
+    # ── Layer 5: Weekly adaptation ────────────────────────────────────────────
+    try:
+        adapt = (
+            db.query(HealthMemory)
+            .filter(
+                HealthMemory.user_id == user.id,
+                HealthMemory.category == "weekly_adaptation",
+            )
+            .order_by(HealthMemory.created_at.desc())
+            .first()
+        )
+        if adapt and adapt.content.get("report"):
+            ctx["weekly_adaptation"] = {
+                "date": adapt.content.get("date"),
+                "report": adapt.content.get("report"),
+                "adherence": adapt.content.get("adherence", {}),
+            }
+    except Exception as e:
+        logger.debug(f"[Context] adaptation: {e}")
+
+    # ── Raw workout sessions ──────────────────────────────────────────────────
+    try:
+        sessions = (
+            db.query(WorkoutSession)
+            .filter(
+                WorkoutSession.user_id == user.id,
+                WorkoutSession.status == SessionStatus.COMPLETED,
+                WorkoutSession.completed_at >= week_ago,
+            )
+            .order_by(WorkoutSession.completed_at.desc())
+            .limit(7)
+            .all()
+        )
+        for s in sessions:
+            ctx["recent_workouts"].append({
+                "date": s.completed_at.strftime("%b %d") if s.completed_at else "?",
+                "duration_mins": s.duration_minutes or 0,
+            })
+    except Exception as e:
+        logger.debug(f"[Context] workouts: {e}")
+
+    # ── Raw meal logs ─────────────────────────────────────────────────────────
+    try:
+        meals = (
+            db.query(MealLog)
+            .filter(MealLog.user_id == user.id, MealLog.logged_at >= three_days_ago)
+            .order_by(MealLog.logged_at.desc())
+            .limit(12)
+            .all()
+        )
+        for m in meals:
+            ctx["recent_meals"].append({
+                "date": m.logged_at.strftime("%b %d") if m.logged_at else "?",
+                "meal_name": m.meal_name or "Meal",
+                "calories": round(m.total_calories or 0),
+                "protein_g": round(m.total_protein or 0),
+                "carbs_g": round(m.total_carbs or 0),
+                "fats_g": round(m.total_fats or 0),
+            })
+    except Exception as e:
+        logger.debug(f"[Context] meals: {e}")
+
+    # ── Weight history ────────────────────────────────────────────────────────
+    try:
+        weights = (
+            db.query(BodyWeightLog)
+            .filter(BodyWeightLog.user_id == user.id)
+            .order_by(BodyWeightLog.logged_at.desc())
+            .limit(14)
+            .all()
+        )
+        ctx["weight_history"] = [
+            {"date": w.logged_at.strftime("%b %d"), "kg": w.weight_kg}
+            for w in reversed(weights)
+        ]
+    except Exception as e:
+        logger.debug(f"[Context] weight: {e}")
+
+    # ── Water ─────────────────────────────────────────────────────────────────
+    try:
+        water = db.query(WaterLog).filter(
+            WaterLog.user_id == user.id, WaterLog.date == today
+        ).first()
+        if water:
+            ctx["water_today"] = {"glasses": water.glasses, "target": water.target_glasses}
+    except Exception as e:
+        logger.debug(f"[Context] water: {e}")
+
+    # ── Raw health memories (exclude agent-generated categories) ─────────────
+    try:
+        _exclude = {
+            "disliked_item", "daily_narrative", "morning_brief",
+            "weekly_adaptation", "correlation_insight", "nudge_sent", "notification",
+        }
+        memories = (
+            db.query(HealthMemory)
+            .filter(
+                HealthMemory.user_id == user.id,
+                HealthMemory.category.notin_(_exclude),
+            )
+            .order_by(HealthMemory.created_at.desc())
+            .limit(20)
+            .all()
+        )
+        ctx["health_memories"] = [
+            {"category": m.category, "content": m.content}
+            for m in memories
+        ]
+    except Exception as e:
+        logger.debug(f"[Context] memories: {e}")
+
+    # ── Disliked items ────────────────────────────────────────────────────────
+    try:
+        ctx["disliked_items"] = get_disliked_items(db, user.id)
+    except Exception as e:
+        logger.debug(f"[Context] disliked: {e}")
+
+    return ctx
+
+
+def format_context_for_prompt(ctx: dict) -> str:
+    lines = [f"USER: {ctx['user_name']}", ""]
+
+    # ── Priority 1: Daily narratives (Layer 1) ─────────────────────────────
+    if ctx.get("daily_narratives"):
+        lines.append("RECENT DAILY SUMMARIES (synthesised by AI, last 7 days — highest signal):")
+        for n in ctx["daily_narratives"]:
+            lines.append(f"  [{n['date']}] {n['summary']}")
+        lines.append("")
+
+    # ── Priority 2: Morning brief (Layer 2) ───────────────────────────────
+    if ctx.get("morning_brief"):
+        b = ctx["morning_brief"]
+        lines.append(f"TODAY'S MORNING BRIEF ({b.get('date', 'today')}):")
+        # Strip markdown headers for cleaner inline context
+        brief_text = b.get("text", "").replace("## ", "").replace("# ", "")
+        lines.append(f"  {brief_text[:400]}")
+        st = b.get("stats", {})
+        if st.get("streak_days"):
+            lines.append(f"  Streak: {st['streak_days']} days | Sessions this week: {st.get('sessions_this_week', 0)}")
+        lines.append("")
+
+    # ── Priority 3: Correlation insights (Layer 4) ────────────────────────
+    if ctx.get("correlation_insights"):
+        lines.append("DATA-DRIVEN INSIGHTS (from 30-day correlation analysis):")
+        for insight in ctx["correlation_insights"][:3]:
+            lines.append(f"  • {insight}")
+        lines.append("")
+
+    # ── Priority 4: Weekly adaptation (Layer 5) ───────────────────────────
+    if ctx.get("weekly_adaptation"):
+        a = ctx["weekly_adaptation"]
+        lines.append(f"LATEST WEEKLY ADAPTATION REPORT ({a.get('date', '?')}):")
+        report_text = a.get("report", "").replace("## ", "").replace("# ", "")
+        lines.append(f"  {report_text[:300]}")
+        adh = a.get("adherence", {})
+        if adh:
+            lines.append(f"  Workout adherence: {adh.get('workout_adherence_pct', '?')}% | Meal adherence: {adh.get('meal_adherence_pct', '?')}%")
+        lines.append("")
+
+    # ── Raw workouts ──────────────────────────────────────────────────────
+    if ctx["recent_workouts"]:
+        lines.append("RECENT WORKOUTS (last 7 days):")
+        for w in ctx["recent_workouts"]:
+            lines.append(f"  • {w['date']} — {w['duration_mins']} mins")
+    else:
+        lines.append("RECENT WORKOUTS: None logged yet.")
+    lines.append("")
+
+    # ── Raw meals ─────────────────────────────────────────────────────────
+    if ctx["recent_meals"]:
+        lines.append("RECENT NUTRITION (last 3 days):")
+        for m in ctx["recent_meals"][:6]:
+            lines.append(
+                f"  • {m['date']} {m['meal_name']}: {m['calories']} kcal "
+                f"| P:{m['protein_g']}g C:{m['carbs_g']}g F:{m['fats_g']}g"
+            )
+    else:
+        lines.append("RECENT NUTRITION: No meals logged yet.")
+    lines.append("")
+
+    # ── Weight ────────────────────────────────────────────────────────────
+    if ctx["weight_history"]:
+        latest = ctx["weight_history"][-1]
+        lines.append(f"CURRENT WEIGHT: {latest['kg']} kg (as of {latest['date']})")
+        if len(ctx["weight_history"]) >= 2:
+            oldest = ctx["weight_history"][0]
+            delta = round(latest["kg"] - oldest["kg"], 1)
+            direction = "↑" if delta > 0 else ("↓" if delta < 0 else "→")
+            lines.append(f"  Trend: {direction} {abs(delta)} kg over {len(ctx['weight_history'])} entries")
+        lines.append("")
+
+    # ── Water ─────────────────────────────────────────────────────────────
+    if ctx["water_today"]:
+        w = ctx["water_today"]
+        lines.append(f"TODAY'S WATER: {w['glasses']}/{w['target']} glasses")
+        lines.append("")
+
+    # ── Supplementary raw memories ────────────────────────────────────────
+    if ctx["health_memories"]:
+        lines.append("OTHER HEALTH EVENTS (recent):")
+        for m in ctx["health_memories"][:8]:
+            cat = m["category"]
+            content = m["content"]
+            if isinstance(content, dict):
+                event = content.get("event", cat)
+                ts = content.get("timestamp", "")[:10]
+                lines.append(f"  [{ts}] {event}: {json.dumps(content)[:100]}")
+            else:
+                lines.append(f"  [{cat}]: {str(content)[:80]}")
+        lines.append("")
+
+    # ── Dislikes ──────────────────────────────────────────────────────────
+    dis = ctx["disliked_items"]
+    if dis["exercises"]:
+        lines.append(f"DISLIKED EXERCISES (NEVER include): {', '.join(dis['exercises'])}")
+    if dis["foods"]:
+        lines.append(f"DISLIKED FOODS (NEVER include): {', '.join(dis['foods'])}")
+    if dis["exercises"] or dis["foods"]:
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────────────────────
+# Per-intent system prompts
+# ─────────────────────────────────────────────────────────────
+
+_BASE_PERSONA = (
+    "You are Central — an elite, highly personalised AI fitness companion built into FitConnect. "
+    "You orchestrate a team of specialist agents: a Personal Trainer, Sports Dietician, Mindset Coach, "
+    "Performance Analyst, and Health Monitor. You always respond as the right specialist for the question. "
+    "You are warm, specific, and direct. You NEVER give generic advice — everything is grounded in the "
+    "user's actual data above. "
+    "Use markdown: **bold** for key numbers, tables for plans, ## headers for sections. "
+    "Be concise but complete. The user should feel they have a world-class coaching team in their pocket."
+)
+
+
+def _agent_header(intent: str) -> str:
+    """Return a subtle agent handoff line to prepend to system prompts."""
+    agent = _INTENT_AGENT.get(intent, _INTENT_AGENT["general"])
+    return f"ACTIVE AGENT: {agent}\nYou are responding as this specialist. Stay in character.\n\n"
+
+
+def _system_workout(prefs: dict, ctx_text: str, disliked: dict) -> str:
+    days = prefs.get("days_per_week", "4 days").replace(" days", "").replace(" day", "")
+    excl = (
+        f"\n⚠️ NEVER include these exercises (user has disliked them): {', '.join(disliked['exercises'])}"
+        if disliked["exercises"] else ""
+    )
+    return f"""{_agent_header("workout")}{_BASE_PERSONA}
+
+{ctx_text}
+
+USER WORKOUT PREFERENCES:
+• Days/week: {prefs.get('days_per_week','4 days')} | Location: {prefs.get('location','Gym')}
+• Goal: {prefs.get('goal','Build muscle')} | Level: {prefs.get('experience','Intermediate')}
+• Injuries/Avoid: {prefs.get('injuries','None')}{excl}
+
+TASK: Generate a complete {days}-day program. FORMAT RULES:
+1. Program name + 1-line description.
+2. Each day: ## Day N — Focus (Muscle Groups)
+3. Under each day: markdown table with columns: | Exercise | Sets | Reps | Rest | Technique Note |
+4. After table: 1-2 line coaching note + recommended session duration.
+5. End with ## Weekly Structure table: | Day | Focus | Volume | Duration |
+6. Reference user's real data where available (weight trend, recent session durations).
+7. Include progressive overload guidance for intermediate/advanced.
+8. Exact timings: how long each session should take."""
+
+
+def _system_meal(prefs: dict, ctx_text: str, disliked: dict, workout_schedule: str) -> str:
+    excl = (
+        f"\n⚠️ NEVER include these foods (user has disliked them): {', '.join(disliked['foods'])}"
+        if disliked["foods"] else ""
+    )
+    return f"""{_agent_header("meal")}{_BASE_PERSONA}
+
+{ctx_text}
+
+USER MEAL PREFERENCES:
+• Diet: {prefs.get('diet_type','Non-vegetarian')} | Cuisine: {prefs.get('cuisine','Mixed')}
+• Cook time: {prefs.get('cook_time','Moderate')} | Allergies: {prefs.get('allergies','None')}
+• Schedule: {prefs.get('schedule','3 meals, wake 7–9am')}{excl}
+
+WORKOUT SCHEDULE (for meal timing):
+{workout_schedule or "No scheduled workouts found."}
+
+TASK: Generate a complete 7-day meal plan. FORMAT RULES:
+1. Daily calorie & macro targets: **Calories | Protein | Carbs | Fats**
+2. Each day: ## Day N (Weekday)
+3. Under each day: | Time | Meal | Foods & Qty | Calories | P | C | F |
+4. After table: 1-line note explaining timing rationale for that day.
+5. ## Weekly Summary table: avg daily macros.
+6. TIMING CRITICAL: pre-workout meal 90min before, post-workout 45–60min after, no heavy meal within 60min of training.
+7. Include WHY each meal is structured as it is (digestion, energy, recovery).
+8. Reference user's weight and goal from health data."""
+
+
+def _system_motivate(ctx_text: str, memory_count: int) -> str:
+    if memory_count < 10:
+        mode = (
+            "This is an early user with less than 2 weeks of data. "
+            "Give high-quality, warm, genuine motivational coaching. "
+            "Ask what they're working towards and give a specific, personal response. No clichés."
+        )
+    else:
+        mode = (
+            "This user has real data. Analyse their patterns from the health memories. "
+            "Identify specifically WHERE they're doing well (name the actual thing, date, number) "
+            "and ONE area losing momentum. Reference real dates and numbers. "
+            "End with ONE specific actionable thing they can do TODAY. Keep it under 200 words."
+        )
+    return f"""{_agent_header("motivate")}{_BASE_PERSONA}
+
+{ctx_text}
+
+MODE: {mode}
+
+RULES: No generic advice. No 'stay consistent' or 'believe in yourself'. Reference real data."""
+
+
+def _system_progress(ctx_text: str) -> str:
+    return f"""{_agent_header("progress")}{_BASE_PERSONA}
+
+{ctx_text}
+
+TASK: Structured progress report. FORMAT:
+
+## 📊 Progress Report
+
+### 🏋️ Workout Summary
+(sessions completed, adherence %, duration trends)
+
+### 🥗 Nutrition Summary
+(avg daily calories, protein consistency, best/worst days)
+
+### ⚖️ Body Composition
+(weight trend, delta, direction)
+
+### 🏆 Highlights
+(specific wins — name the exercises, foods, numbers)
+
+### 🎯 Focus Areas
+(1–2 specific improvements, not generic)
+
+### 💬 Coach's Note
+(personal, warm, 2–3 sentences referencing their actual journey)
+
+If data is sparse, acknowledge warmly and motivate them to build the habit."""
+
+
+def _system_reminder(answers: dict) -> str:
+    category = answers.get("category", answers.get("reminder_type", "general"))
+    time_val = answers.get("time", "?")
+    frequency = answers.get("frequency", "?")
+    details = answers.get("custom_text") or answers.get("title") or ""
+
+    category_context = {
+        "workout": "This is a workout reminder. Tie it to their training goals.",
+        "meal": "This is a meal/nutrition reminder. Mention the importance of eating on schedule.",
+        "medication": "This is a MEDICATION reminder. Be especially warm and supportive. Emphasise consistency.",
+        "checkup": "This is a health checkup reminder. Encourage them to attend and prepare their health records.",
+        "other": "This is a custom reminder the user set for themselves.",
+    }.get(category.lower(), "")
+
+    return f"""{_BASE_PERSONA}
+
+A reminder has been set:
+• Category: {category}
+• Time: {time_val}
+• Frequency: {frequency}
+• Details: {details or "N/A"}
+
+{category_context}
+
+Respond with a warm, personal confirmation: "Done! I'll remind you to [specific thing] at [time], [frequency]."
+Add ONE encouraging sentence. Keep it under 3 sentences total. Sound like a coach who genuinely cares."""
+
+
+def _system_medication_status(ctx_text: str, medication_ctx: str) -> str:
+    return f"""{_BASE_PERSONA}
+
+{ctx_text}
+
+{medication_ctx}
+
+The user is asking about their medication. Answer directly from the medication context above.
+If data is available: tell them exactly which tablets are taken/missed today.
+If no data: tell them you can see their medication schedule and guide them to the Today tab.
+Be warm, clear, and supportive. 2-4 sentences."""
+
+
+def _system_general(ctx_text: str) -> str:
+    return f"""{_agent_header("general")}{_BASE_PERSONA}
+
+{ctx_text}
+
+Answer directly using the user's actual data where relevant. Use markdown where it helps clarity."""
+
+
+# ─────────────────────────────────────────────────────────────
+# Reminder creation helper
+# ─────────────────────────────────────────────────────────────
+
+async def _create_reminder_from_answers(db: Session, user: User, answers: dict):
+    """Create a Reminder from a Central AI conversation flow."""
+    try:
+        from app.models.reminder import Reminder
+        from datetime import datetime as dt, date
+
+        # Parse time (supports both "07:30" and "Morning (7am)" style)
+        time_map = {
+            "morning (7am)": "07:00", "morning": "07:00",
+            "midday (12pm)": "12:00", "noon": "12:00",
+            "afternoon (4pm)": "16:00", "afternoon": "16:00",
+            "evening (7pm)": "19:00", "evening": "19:00",
+            "night (9pm)": "21:00", "night": "21:00",
+        }
+        raw_time = answers.get("time", "07:00").lower().strip()
+        parsed_time = time_map.get(raw_time, raw_time if ":" in raw_time else "07:00")
+        try:
+            hour, minute = map(int, parsed_time.split(":"))
+        except Exception:
+            hour, minute = 7, 0
+
+        # Build a real datetime (today or tomorrow if time has passed)
+        now = dt.utcnow()
+        scheduled = dt(now.year, now.month, now.day, hour, minute)
+        if scheduled <= now:
+            from datetime import timedelta
+            scheduled += timedelta(days=1)
+
+        # Recurrence
+        freq_raw = answers.get("frequency", "every day").lower()
+        if "weekday" in freq_raw:
+            recurrence = "specific"
+            recurrence_days = '["mon","tue","wed","thu","fri"]'
+        elif "specific" in freq_raw:
+            recurrence = "specific"
+            recurrence_days = None
+        elif "once" in freq_raw or "one time" in freq_raw:
+            recurrence = "once"
+            recurrence_days = None
+        elif "weekly" in freq_raw:
+            recurrence = "weekly"
+            recurrence_days = None
+        else:
+            recurrence = "daily"
+            recurrence_days = None
+
+        # Category mapping
+        category_raw = answers.get("category", answers.get("reminder_type", "other")).lower()
+        category_map = {
+            "workout": "workout", "exercise": "workout", "gym": "workout", "training": "workout",
+            "meal": "meal", "food": "meal", "nutrition": "meal", "eat": "meal", "supplement": "meal",
+            "medication": "medication", "medicine": "medication", "tablet": "medication", "pill": "medication",
+            "checkup": "checkup", "doctor": "checkup", "appointment": "checkup", "test": "checkup",
+        }
+        cat = "other"
+        for key, val in category_map.items():
+            if key in category_raw:
+                cat = val
+                break
+
+        title = answers.get("custom_text") or answers.get("title") or f"{cat.capitalize()} reminder"
+
+        reminder = Reminder(
+            user_id      = user.id,
+            title        = title,
+            type         = cat,
+            message      = title,
+            scheduled_at = scheduled,
+            recurrence   = recurrence,
+            recurrence_days = recurrence_days,
+            is_active    = True,
+        )
+        db.add(reminder)
+        db.commit()
+        logger.info(f"[ai_central] Reminder created: {title} @ {scheduled.strftime('%H:%M')} ({recurrence})")
+        return reminder
+    except Exception as e:
+        logger.warning(f"[ai_central] Reminder creation failed: {e}")
+        return None
+
+
+# ─────────────────────────────────────────────────────────────
+# Core streaming generator
+# ─────────────────────────────────────────────────────────────
+
+async def _stream_openai(messages: list, intent: str = "general") -> AsyncGenerator[str, None]:
+    client = _get_openai()
+    agent_label = _INTENT_AGENT.get(intent, _INTENT_AGENT["general"])
+    try:
+        # Send agent metadata first so the frontend can show who's responding
+        yield f"data: {json.dumps({'agent': agent_label, 'intent': intent})}\n\n"
+
+        stream = await client.chat.completions.create(
+            model="gpt-4.1-nano",
+            messages=messages,
+            stream=True,
+            temperature=0.7,
+            max_tokens=4000,  # 7-day meal plans & full workout programs need headroom
+            timeout=60.0,
+        )
+        async for chunk in stream:
+            delta = chunk.choices[0].delta
+            if delta.content:
+                yield f"data: {json.dumps({'token': delta.content})}\n\n"
+        yield f"data: {json.dumps({'done': True, 'intent': intent})}\n\n"
+    except Exception as e:
+        logger.error(f"[ai_central] Stream error: {e}")
+        yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
+
+
+def _build_messages(system_prompt: str, conv_history: list, question: str) -> list:
+    messages = [{"role": "system", "content": system_prompt}]
+    for msg in conv_history[-10:]:
+        if msg.get("role") in ("user", "assistant") and msg.get("content"):
+            messages.append({"role": msg["role"], "content": msg["content"]})
+    messages.append({"role": "user", "content": question})
+    return messages
+
+
+# ─────────────────────────────────────────────────────────────
+# POST /ai/central/stream  — Primary streaming endpoint
+# ─────────────────────────────────────────────────────────────
+
+@router.post("/stream")
+async def stream_central(
+    body: AskRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Central AI Brain (UNIFIED WITH ORCHESTRATOR)
-    
-    Flow:
-    1. Build user context (memory, profile, vault items)
-    2. Route through orchestrator for intent classification
-    3. Select appropriate agent (Coach, Dietician, etc.)
-    4. Generate response with full context awareness
-    5. Format response as beautiful markdown
-    6. Store AI insight in memory
-    7. Run reflection loop for learning
-    """
+    question = body.question.strip()
+    conv_history = body.conversation_history or []
+    flow_ctx = body.flow_context or {}
 
-    question = payload.question
+    ctx = build_rich_context(db, current_user)
+    ctx_text = format_context_for_prompt(ctx)
+    disliked = ctx["disliked_items"]
+
+    intent = flow_ctx.get("intent") or detect_intent(question)
+
+    if intent == "workout":
+        prefs = get_preferences(db, current_user.id, "workout") or {}
+        system_prompt = _system_workout(prefs, ctx_text, disliked)
+
+    elif intent == "meal":
+        prefs = get_preferences(db, current_user.id, "meal") or {}
+        ws_str = "\n".join(
+            f"  • {w['date']} — {w['duration_mins']} min"
+            for w in ctx["recent_workouts"]
+        )
+        system_prompt = _system_meal(prefs, ctx_text, disliked, ws_str)
+
+    elif intent == "motivate":
+        system_prompt = _system_motivate(ctx_text, len(ctx["health_memories"]))
+
+    elif intent == "progress":
+        system_prompt = _system_progress(ctx_text)
+
+    elif intent == "reminder":
+        answers = flow_ctx.get("answers", {})
+        system_prompt = _system_reminder(answers)
+        if answers.get("frequency"):
+            await _create_reminder_from_answers(db, current_user, answers)
+
+    elif intent == "medication":
+        # Pull today's medication logs for context
+        medication_ctx = ""
+        try:
+            from app.models.medication_schedule import MedicationSchedule, MedicationLog
+            from datetime import date
+            import json as _json
+            today = date.today().isoformat()
+            schedules = db.query(MedicationSchedule).filter(
+                MedicationSchedule.user_id == current_user.id,
+                MedicationSchedule.is_active == True,
+            ).all()
+            if schedules:
+                lines = ["## Today's Medication Schedule"]
+                for s in schedules:
+                    log = db.query(MedicationLog).filter(
+                        MedicationLog.schedule_id == s.id,
+                        MedicationLog.log_date == today,
+                    ).first()
+                    tablets = _json.loads(s.tablets or "[]")
+                    status = _json.loads(log.tablets_status if log else "{}") if log else {}
+                    lines.append(f"\n**{s.name}** ({s.scheduled_time})")
+                    for t in tablets:
+                        taken = status.get(t.get("name", ""), False)
+                        icon = "✅" if taken else "❌"
+                        lines.append(f"  {icon} {t.get('name')} {t.get('dosage','')}")
+                medication_ctx = "\n".join(lines)
+            else:
+                medication_ctx = "No medication schedules set up yet."
+        except Exception as _e:
+            medication_ctx = ""
+            logger.debug(f"[medication ctx] {_e}")
+
+        system_prompt = _system_medication_status(ctx_text, medication_ctx)
+
+    else:
+        system_prompt = _system_general(ctx_text)
+
+    messages = _build_messages(system_prompt, conv_history, question)
+
+    # Log agent usage to health memory (fire-and-forget, non-blocking)
+    try:
+        db.add(HealthMemory(
+            user_id=current_user.id, category="ai_insight", source="ai",
+            content={"question": question[:200], "intent": intent,
+                     "agent": _INTENT_AGENT.get(intent, "Central AI")},
+        ))
+        db.commit()
+    except Exception:
+        pass
+
+    return StreamingResponse(
+        _stream_openai(messages, intent=intent),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+        },
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+# POST /ai/central/ask  — Non-streaming legacy
+# ─────────────────────────────────────────────────────────────
+
+@router.post("/ask")
+async def ask_central(
+    body: AskRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    question = body.question.strip()
+    conv_history = body.conversation_history or []
+    flow_ctx = body.flow_context or {}
+
+    ctx = build_rich_context(db, current_user)
+    ctx_text = format_context_for_prompt(ctx)
+    disliked = ctx["disliked_items"]
+    intent = flow_ctx.get("intent") or detect_intent(question)
+
+    if intent == "workout":
+        system_prompt = _system_workout(get_preferences(db, current_user.id, "workout") or {}, ctx_text, disliked)
+    elif intent == "meal":
+        system_prompt = _system_meal(get_preferences(db, current_user.id, "meal") or {}, ctx_text, disliked, "")
+    elif intent == "motivate":
+        system_prompt = _system_motivate(ctx_text, len(ctx["health_memories"]))
+    elif intent == "progress":
+        system_prompt = _system_progress(ctx_text)
+    elif intent == "reminder":
+        system_prompt = _system_reminder(flow_ctx.get("answers", {}))
+    else:
+        system_prompt = _system_general(ctx_text)
+
+    messages = _build_messages(system_prompt, conv_history, question)
 
     try:
-        # --------------------------------------------------
-        # BUILD RICH CONTEXT
-        # --------------------------------------------------
-        context = ContextBuilder.build(user_id=current_user.id, db=db)
-        
-        # Add vault items
-        vault_items = (
-            db.query(VaultItem)
-            .filter(VaultItem.user_id == current_user.id)
-            .order_by(VaultItem.created_at.desc())
-            .limit(10)
-            .all()
+        client = _get_openai()
+        resp = await client.chat.completions.create(
+            model="gpt-4.1-nano", messages=messages, temperature=0.7, max_tokens=4000,
+            timeout=60.0,
         )
-        
-        context["vault"] = [
-            {
-                "type": getattr(item, "item_type", None) or getattr(item, "type", None) or "unknown",
-                "category": getattr(item, "category", None),
-                "title": getattr(item, "title", None) or getattr(item, "name", None),
-                "created_at": item.created_at.isoformat() if getattr(item, "created_at", None) else None,
-            }
-            for item in vault_items
-        ]
-        
-        context["db"] = db
-
-        # --------------------------------------------------
-        # ROUTE THROUGH ORCHESTRATOR
-        # --------------------------------------------------
-        central_agent = get_orchestrator()
-        
-        orchestrator_payload = {
-            "type": "orchestrate",
-            "input": {"goal_text": question},
-            "context": context,
-        }
-        
-        result = await central_agent.handle(orchestrator_payload)
-        final = result.get("final", {})
-        
-        if not final:
-            raise HTTPException(status_code=500, detail="Orchestrator returned no result")
-        
-        decisions = final.get("decisions", [])
-        
-        if not decisions:
-            # Fallback to direct OpenAI
-            answer = await _fallback_openai_response(question, current_user, db)
-        else:
-            # Extract and format primary agent response
-            primary_decision = decisions[0]
-            agent_result = primary_decision.get("result", {})
-            
-            # Format response
-            answer = format_agent_response(agent_result)
-
-            # --------------------------------------------------
-            # RUN REFLECTION LOOP (LEARNING)
-            # --------------------------------------------------
-            try:
-                ReflectionEngine.reflect(
-                    user_id=current_user.id,
-                    intent=final.get("intent"),
-                    decisions=decisions,
-                    db=db,
-                )
-            except Exception as e:
-                print(f"[REFLECTION ERROR] {e}")
-
-        # --------------------------------------------------
-        # STORE AI INSIGHT IN MEMORY
-        # --------------------------------------------------
+        answer = resp.choices[0].message.content
         try:
-            db.add(
-                HealthMemory(
-                    user_id=current_user.id,
-                    category="ai_insight",
-                    content=answer[:500],
-                )
-            )
+            db.add(HealthMemory(
+                user_id=current_user.id, category="ai_insight", source="ai",
+                content={"question": question, "answer": answer[:400], "intent": intent},
+            ))
             db.commit()
-        except Exception as e:
-            print(f"[MEMORY STORAGE ERROR] {e}")
-            db.rollback()
-
-        return CentralAnswer(
-            question=question,
-            answer=answer,
-        )
-
+        except Exception:
+            pass
+        return {"answer": answer, "intent": intent}
     except Exception as e:
-        print(f"[CENTRAL ERROR] {e}")
-        # Fallback to simple OpenAI
-        try:
-            answer = await _fallback_openai_response(question, current_user, db)
-            return CentralAnswer(question=question, answer=answer)
-        except Exception as fallback_error:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Central AI failed: {str(e)}\nFallback also failed: {str(fallback_error)}"
-            )
+        logger.error(f"[ai_central/ask] {e}")
+        return {"answer": "I'm having trouble right now. Please try again.", "intent": intent}
 
 
-async def _fallback_openai_response(
-    question: str,
-    current_user: User,
-    db: Session,
-) -> str:
-    """Fallback to direct OpenAI call if orchestrator fails."""
-    
-    memories = (
-        db.query(HealthMemory)
-        .filter(HealthMemory.user_id == current_user.id)
-        .order_by(HealthMemory.created_at.desc())
-        .limit(15)
-        .all()
-    )
-    
-    memory_text = "\n".join([
-        f"[{m.category}] {m.content}"
-        for m in memories
-        if m.content
-    ]) or "No previous context."
-    
-    system_prompt = f"""You are Central, the fitness AI assistant for FitConnect.
+# ─────────────────────────────────────────────────────────────
+# Preferences
+# ─────────────────────────────────────────────────────────────
 
-CRITICAL INSTRUCTIONS:
-- Be SPECIFIC and ACTIONABLE, not just motivational
-- When asked for workouts: provide ACTUAL exercises with sets, reps, rest times
-- When asked for diet plans: provide ACTUAL meals with portions
-- Focus on practical, concrete advice
-- Include numbers, measurements, and specifics
-- Format with markdown for clarity
+@router.get("/preferences/{pref_type}")
+async def get_prefs(pref_type: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    data = get_preferences(db, current_user.id, pref_type)
+    return {"preference_type": pref_type, "data": data, "locked": data is not None}
 
-USER CONTEXT:
-{memory_text}
 
-RESPONSE FORMAT:
-For workouts, use this structure:
-**[Title]**
+@router.post("/preferences")
+async def save_prefs(body: PreferenceSaveRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    row = save_preferences(db, current_user.id, body.preference_type, body.data)
+    return {"preference_type": row.preference_type, "data": row.data, "locked": True}
 
-[Brief intro]
 
-### 🏋️ Your Workout
-1. **[Exercise Name]**
-   - [Sets] sets × [Reps] reps • Rest: [Time]
-   - [Optional form notes]
+@router.delete("/preferences/{pref_type}")
+async def clear_prefs(pref_type: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    ok = clear_preferences(db, current_user.id, pref_type)
+    return {"cleared": ok, "preference_type": pref_type}
 
-For meal plans, use this structure:
-**[Title]**
 
-[Brief intro]
+# ─────────────────────────────────────────────────────────────
+# Dislike
+# ─────────────────────────────────────────────────────────────
 
-### 🍽️ Your Meals
-1. **[Meal Name]** ([Calories]kcal)
-   - [Food 1] - [Portion]
-   - [Food 2] - [Portion]
+@router.post("/dislike")
+async def log_dislike(body: DislikeRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    write_disliked_item(db=db, user_id=current_user.id, item_type=body.item_type, item_name=body.item_name, context=body.context)
+    return {"logged": True, "item_type": body.item_type, "item_name": body.item_name}
 
-### 💡 Tips
-- [Practical tip 1]
-- [Practical tip 2]
 
-*[Safety note if relevant]*"""
+# ─────────────────────────────────────────────────────────────
+# Questions
+# ─────────────────────────────────────────────────────────────
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": question},
-        ],
-        max_tokens=1500,  # Increased for more detailed responses
-        temperature=0.7,
-    )
-    
-    return response.choices[0].message.content.strip()
+@router.get("/questions/{flow_type}")
+async def get_flow_questions(flow_type: str):
+    return {"flow_type": flow_type, "questions": get_questions(flow_type)}

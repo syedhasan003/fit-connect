@@ -2,7 +2,7 @@ from datetime import date, datetime
 from sqlalchemy.orm import Session
 
 from app.models.daily_health_snapshot import DailyHealthSnapshot
-from app.models.workout_log import WorkoutLog
+from app.models.fitness_tracking import WorkoutSession, SessionStatus  # ← correct model
 from app.models.reminder import Reminder
 from app.models.reminder_log import ReminderLog
 from app.models.health_memory import HealthMemory
@@ -21,26 +21,23 @@ class DailySnapshotService:
     ) -> DailyHealthSnapshot:
 
         day_start = datetime.combine(target_date, datetime.min.time())
-        day_end = datetime.combine(target_date, datetime.max.time())
+        day_end   = datetime.combine(target_date, datetime.max.time())
 
-        # -------------------------------
-        # WORKOUTS
-        # -------------------------------
+        # ── Workouts ────────────────────────────────────────────────────
         workouts = (
-            db.query(WorkoutLog)
+            db.query(WorkoutSession)
             .filter(
-                WorkoutLog.user_id == user_id,
-                WorkoutLog.created_at >= day_start,
-                WorkoutLog.created_at <= day_end,
+                WorkoutSession.user_id == user_id,
+                WorkoutSession.started_at >= day_start,
+                WorkoutSession.started_at <= day_end,
             )
             .all()
         )
 
-        workout_done = len(workouts) > 0
+        completed_workouts = [w for w in workouts if w.status == SessionStatus.COMPLETED]
+        workout_done = len(completed_workouts) > 0
 
-        # -------------------------------
-        # REMINDERS
-        # -------------------------------
+        # ── Reminders ───────────────────────────────────────────────────
         reminders_total = (
             db.query(Reminder)
             .filter(
@@ -62,9 +59,7 @@ class DailySnapshotService:
             .count()
         )
 
-        # -------------------------------
-        # BEHAVIOUR / MEMORY SIGNALS
-        # -------------------------------
+        # ── Behaviour / Memory Signals ──────────────────────────────────
         behaviour_events = (
             db.query(HealthMemory)
             .filter(
@@ -75,9 +70,7 @@ class DailySnapshotService:
             .count()
         )
 
-        # -------------------------------
-        # AI INSIGHT (deterministic)
-        # -------------------------------
+        # ── Deterministic AI Insight ────────────────────────────────────
         if reminders_missed > 0 and not workout_done:
             ai_insight = "Low adherence today. Missed reminders and no workout logged."
         elif workout_done:
@@ -89,7 +82,8 @@ class DailySnapshotService:
             "date": target_date.isoformat(),
             "workout": {
                 "completed": workout_done,
-                "count": len(workouts),
+                "count": len(completed_workouts),
+                "total_sessions": len(workouts),
             },
             "diet": {
                 "followed": None,
@@ -102,14 +96,12 @@ class DailySnapshotService:
             "ai_insight": ai_insight,
         }
 
-        # -------------------------------
-        # UPSERT (IMMUTABLE LOGIC OK FOR NOW)
-        # -------------------------------
+        # ── Upsert ──────────────────────────────────────────────────────
         snapshot = (
             db.query(DailyHealthSnapshot)
             .filter(
                 DailyHealthSnapshot.user_id == user_id,
-                DailyHealthSnapshot.date == target_date,   # ✅ FIXED
+                DailyHealthSnapshot.date == target_date,
             )
             .first()
         )
@@ -126,5 +118,4 @@ class DailySnapshotService:
 
         db.commit()
         db.refresh(snapshot)
-
         return snapshot

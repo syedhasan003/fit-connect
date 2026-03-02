@@ -1,6 +1,9 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.core.config import settings
 
 # -------------------------------------------------
 # Database
@@ -19,10 +22,16 @@ import app.models.workout_log
 import app.models.weight_log
 import app.models.reminder
 import app.models.reminder_log
+import app.models.medication_schedule
+import app.models.health_record
 import app.models.evaluator_state
 import app.models.health_memory
 import app.models.daily_health_snapshot
 import app.models.vault_item
+import app.models.fitness_tracking  # ensures body_weight_logs + water_logs tables are created
+import app.models.user_ai_preferences  # ensures user_ai_preferences table is created
+import app.models.exercise              # Phase 4 — exercise library
+import app.models.food                  # Phase 4 — food database
 
 # -------------------------------------------------
 # Core Routers
@@ -45,6 +54,7 @@ from app.routers import health_memory
 from app.routers import reminders
 from app.routers import workout_endpoints
 from app.routers import diet_endpoints
+from app.routers import body_metrics
 
 # -------------------------------------------------
 # Home
@@ -86,6 +96,8 @@ from app.routes import diet
 # -------------------------------------------------
 from app.routers import onboarding
 from app.routers import onboarding_health
+from app.routers import medication as medication_router
+from app.routers import health_records as health_records_router
 from app.routers import reminder_reasoning
 from app.routers import reminder_behavior
 
@@ -95,9 +107,40 @@ from app.routers import reminder_behavior
 from app.routers import behaviour
 
 # -------------------------------------------------
+# Agent Layer (Foundations A, B, C)
+# -------------------------------------------------
+from app.routers import agent_ws, agent_api
+from app.routers import voice as voice_router
+from app.agent.scheduler import start_scheduler, stop_scheduler
+
+# -------------------------------------------------
 # Orchestrator App (ISOLATED)
 # -------------------------------------------------
 from app.ai.orchestrator.orchestrator import app as orchestrator_app
+
+# -------------------------------------------------
+# Lifespan (replaces deprecated on_event)
+# -------------------------------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ── Startup ──────────────────────────────────
+    init_db()
+
+    # Create behaviour_log table if it doesn't exist yet
+    from sqlalchemy import text
+    from app.db.database import get_db
+    db = next(get_db())
+    db.execute(text(behaviour.CREATE_TABLE_SQL))
+    db.commit()
+
+    # Start the agent scheduler (Foundation A)
+    start_scheduler()
+
+    yield  # app is running
+
+    # ── Shutdown ─────────────────────────────────
+    stop_scheduler()
+
 
 # -------------------------------------------------
 # App Init
@@ -105,6 +148,7 @@ from app.ai.orchestrator.orchestrator import app as orchestrator_app
 app = FastAPI(
     title="FitConnect API",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # -------------------------------------------------
@@ -112,7 +156,7 @@ app = FastAPI(
 # -------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -145,6 +189,7 @@ app.include_router(health_memory.router)
 app.include_router(reminders.router)
 app.include_router(workout_endpoints.router)
 app.include_router(diet_endpoints.router)
+app.include_router(body_metrics.router)
 
 # Home
 app.include_router(home_router.router)
@@ -174,27 +219,28 @@ app.include_router(diet.router)
 # Onboarding
 app.include_router(onboarding.router)
 app.include_router(onboarding_health.router)
+
+# Phase 3 — Medication + Health Records
+app.include_router(medication_router.router)
+app.include_router(health_records_router.router)
 app.include_router(reminder_reasoning.router)
 app.include_router(reminder_behavior.router)
 
+# Phase 4 — Exercise Library + Food Database
+from app.routers import exercises as exercises_router
+from app.routers import foods as foods_router
+app.include_router(exercises_router.router)
+app.include_router(foods_router.router)
+
 # Behavioural Event Log
 app.include_router(behaviour.router)
+
+# Agent Layer — WebSocket + REST API
+app.include_router(agent_ws.router)
+app.include_router(agent_api.router)
+app.include_router(voice_router.router)
 
 # -------------------------------------------------
 # ORCHESTRATOR
 # -------------------------------------------------
 app.mount("/orchestrate", orchestrator_app)
-
-# -------------------------------------------------
-# Startup
-# -------------------------------------------------
-@app.on_event("startup")
-def on_startup():
-    init_db()
-
-    # Create behaviour_log table if it doesn't exist yet
-    from sqlalchemy import text
-    from app.db.database import get_db
-    db = next(get_db())
-    db.execute(text(behaviour.CREATE_TABLE_SQL))
-    db.commit()

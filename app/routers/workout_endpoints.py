@@ -65,6 +65,9 @@ class WorkoutSessionUpdate(BaseModel):
     energy_level_end: Optional[str] = None
     soreness_level_end: Optional[int] = None
     notes: Optional[str] = None
+    exercises_data: Optional[dict] = None   # {exerciseName: [{weight, reps, done}]}
+    program_id: Optional[int] = None
+    day_number: Optional[int] = None
 
 
 class WorkoutSessionResponse(BaseModel):
@@ -265,6 +268,8 @@ async def start_workout_session(
     session = WorkoutSession(
         user_id=current_user.id,
         manual_workout_id=data.program_id,
+        program_id=data.program_id,
+        day_number=data.day_number,
         status=SessionStatus.IN_PROGRESS,
         planned_exercises_count=planned_exercises_count,
         completed_exercises_count=0,
@@ -317,8 +322,65 @@ async def complete_workout_session(
     session.soreness_level_end = data.soreness_level_end
     session.notes = data.notes
 
+    # Save per-exercise set data for history (previous session display)
+    if data.exercises_data is not None:
+        import json
+        session.exercises_data = json.dumps(data.exercises_data)
+    if data.program_id is not None:
+        session.program_id = data.program_id
+    if data.day_number is not None:
+        session.day_number = data.day_number
+
     db.commit()
     db.refresh(session)
+
+    # ── Write health memory (fire-and-forget) ──────────────────────────────
+    try:
+        import json as _json
+        from app.services.memory_writer import write_workout_memory
+
+        # Parse exercises_data to build summary
+        raw_ex = data.exercises_data or []
+        exercises_summary = []
+        pr_list = []
+        total_volume = 0.0
+
+        for ex_entry in raw_ex:
+            name = ex_entry.get("name", "Unknown")
+            sets_data = ex_entry.get("sets", [])
+            sets_done = len([s for s in sets_data if s.get("weight") or s.get("reps")])
+            weights = [s.get("weight", 0) for s in sets_data if s.get("weight")]
+            reps_list = [s.get("reps", 0) for s in sets_data if s.get("reps")]
+            vol = sum(w * r for w, r in zip(weights, reps_list))
+            total_volume += vol
+            top_w = max(weights) if weights else 0
+            exercises_summary.append({
+                "name": name,
+                "sets_done": sets_done,
+                "total_volume_kg": round(vol, 1),
+                "top_weight_kg": top_w,
+            })
+            # Simple PR detection: mark if top weight > 0
+            if top_w > 0:
+                pr_list.append({"exercise": name, "weight_kg": top_w})
+
+        write_workout_memory(
+            db=db,
+            user_id=current_user.id,
+            program_name=getattr(session, "manual_workout_name", None) or f"Program #{data.program_id or '?'}",
+            day_number=data.day_number or 0,
+            day_name=f"Day {data.day_number or '?'}",
+            exercises=exercises_summary,
+            total_volume_kg=round(total_volume, 1),
+            duration_mins=session.duration_minutes or 0,
+            pr_list=pr_list,
+            energy_level=str(data.energy_level_end) if data.energy_level_end else None,
+            soreness_level=str(data.soreness_level_end) if data.soreness_level_end else None,
+        )
+    except Exception as _mem_err:
+        import logging
+        logging.getLogger(__name__).warning(f"[workout_endpoints] memory write failed: {_mem_err}")
+    # ──────────────────────────────────────────────────────────────────────
 
     return session
 
@@ -503,6 +565,41 @@ async def deactivate_workout_program(
 # ============================================================================
 # STATISTICS & INSIGHTS
 # ============================================================================
+
+@router.get("/sessions/previous")
+async def get_previous_session(
+    program_id: int,
+    day_number: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Get the last completed session for this program+day.
+    Returns exercises_data (set logs) so the frontend can show 'Last: Xkg × Y'.
+    """
+    import json
+    session = db.query(WorkoutSession).filter(
+        WorkoutSession.user_id == current_user.id,
+        WorkoutSession.program_id == program_id,
+        WorkoutSession.day_number == day_number,
+        WorkoutSession.status == SessionStatus.COMPLETED,
+        WorkoutSession.exercises_data.isnot(None),
+    ).order_by(WorkoutSession.completed_at.desc()).first()
+
+    if not session:
+        return {"found": False, "exercises_data": {}}
+
+    try:
+        data = json.loads(session.exercises_data) if session.exercises_data else {}
+    except Exception:
+        data = {}
+
+    return {
+        "found": True,
+        "completed_at": session.completed_at.isoformat() if session.completed_at else None,
+        "exercises_data": data,
+    }
+
 
 @router.get("/stats/weekly")
 async def get_weekly_stats(

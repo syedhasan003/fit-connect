@@ -14,7 +14,7 @@ class User(Base):
     role = Column(String, nullable=False, default=Role.user.value)
     active_workout_program_id = Column(Integer, nullable=True)
     active_diet_plan_id = Column(Integer, nullable=True)
-    onboarding_completed = Column(Boolean, nullable=False, server_default='false')
+    onboarding_completed = Column(Boolean, nullable=False, server_default='0')
     workout_sessions = relationship("WorkoutSession", back_populates="user", foreign_keys="WorkoutSession.user_id")
     behavioral_patterns = relationship("BehavioralPattern", back_populates="user", foreign_keys="BehavioralPattern.user_id")
     ai_coaching_logs = relationship("AICoachingLog", back_populates="user", foreign_keys="AICoachingLog.user_id")

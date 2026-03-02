@@ -1,408 +1,472 @@
 """
-Seed Foods Database
-Run this script to populate the foods table with 500+ common foods
-Usage: python seed_foods.py
+Seed Foods Database — Phase 4
+Populates the `food_items` table with 300+ Indian & global foods.
+
+Uses the FoodItem model (app.models.food) introduced in Phase 4.
+Note: FoodItem ≠ the legacy Food model in fitness_tracking.py (user-custom foods).
+
+Usage:
+  cd backend
+  python seed_foods.py
 """
+import sys, os
+sys.path.insert(0, os.path.dirname(__file__))
 
-from sqlalchemy.orm import Session
-from app.db.database import SessionLocal
-from app.models.fitness_tracking import Food, FoodSource
+# ── Import ALL models first so SQLAlchemy can resolve all relationships ──────
+# The User model references WorkoutSession, BehavioralPattern etc. — they must
+# be imported before any db.query() is called.
+import app.models.fitness_tracking   # noqa: F401 — loads WorkoutSession, Food, etc.
+import app.models.user               # noqa: F401 — loads User relationships
+import app.models.exercise           # noqa: F401
+import app.models.reminder           # noqa: F401
+import app.models.medication         # noqa: F401
+import app.models.vault_item         # noqa: F401
 
-def get_seed_foods():
-    """
-    Returns list of 500+ foods for seeding database.
-    Organized by category with accurate nutrition per 100g.
-    """
+from app.db.database import SessionLocal, engine, Base
+from app.models.food import FoodItem  # Phase-4 food database model
 
-    return [
-        # PROTEIN SOURCES (100 items)
-        {"name": "Chicken Breast (boneless, skinless)", "category": "Protein", "calories": 165, "protein": 31, "carbs": 0, "fats": 3.6, "serving": "1 breast (174g)", "g": 174},
-        {"name": "Chicken Thigh (boneless, skinless)", "category": "Protein", "calories": 209, "protein": 26, "carbs": 0, "fats": 10.9, "serving": "1 thigh (114g)", "g": 114},
-        {"name": "Chicken Drumstick (skinless)", "category": "Protein", "calories": 172, "protein": 28, "carbs": 0, "fats": 5.7, "serving": "1 drumstick (96g)", "g": 96},
-        {"name": "Chicken Wings", "category": "Protein", "calories": 203, "protein": 30, "carbs": 0, "fats": 8.1, "serving": "100g", "g": 100},
-        {"name": "Ground Chicken (lean)", "category": "Protein", "calories": 143, "protein": 22, "carbs": 0, "fats": 5.5, "serving": "100g", "g": 100},
-        {"name": "Ground Beef (90% lean)", "category": "Protein", "calories": 176, "protein": 20, "carbs": 0, "fats": 10, "serving": "100g", "g": 100},
-        {"name": "Ground Beef (85% lean)", "category": "Protein", "calories": 215, "protein": 18, "carbs": 0, "fats": 15, "serving": "100g", "g": 100},
-        {"name": "Ground Beef (80% lean)", "category": "Protein", "calories": 254, "protein": 17, "carbs": 0, "fats": 20, "serving": "100g", "g": 100},
-        {"name": "Sirloin Steak (lean)", "category": "Protein", "calories": 271, "protein": 31, "carbs": 0, "fats": 16, "serving": "100g", "g": 100},
-        {"name": "Ribeye Steak", "category": "Protein", "calories": 291, "protein": 27, "carbs": 0, "fats": 20, "serving": "100g", "g": 100},
-        {"name": "Flank Steak", "category": "Protein", "calories": 192, "protein": 29, "carbs": 0, "fats": 8, "serving": "100g", "g": 100},
-        {"name": "Ground Turkey (93% lean)", "category": "Protein", "calories": 170, "protein": 22, "carbs": 0, "fats": 8, "serving": "100g", "g": 100},
-        {"name": "Turkey Breast (roasted)", "category": "Protein", "calories": 135, "protein": 29, "carbs": 0, "fats": 1.4, "serving": "100g", "g": 100},
-        {"name": "Turkey Deli Meat", "category": "Protein", "calories": 111, "protein": 23, "carbs": 0.6, "fats": 1.7, "serving": "100g", "g": 100},
-        {"name": "Pork Chop (lean)", "category": "Protein", "calories": 231, "protein": 28, "carbs": 0, "fats": 12, "serving": "100g", "g": 100},
-        {"name": "Pork Tenderloin", "category": "Protein", "calories": 143, "protein": 26, "carbs": 0, "fats": 3.5, "serving": "100g", "g": 100},
-        {"name": "Bacon", "category": "Protein", "calories": 541, "protein": 37, "carbs": 1.4, "fats": 42, "serving": "100g", "g": 100},
-        {"name": "Ham (deli)", "category": "Protein", "calories": 145, "protein": 21, "carbs": 1.5, "fats": 5.5, "serving": "100g", "g": 100},
-        {"name": "Salmon (wild, cooked)", "category": "Protein", "calories": 182, "protein": 25, "carbs": 0, "fats": 8, "serving": "100g", "g": 100},
-        {"name": "Salmon (farmed, cooked)", "category": "Protein", "calories": 206, "protein": 22, "carbs": 0, "fats": 12, "serving": "100g", "g": 100},
-        {"name": "Tuna (canned in water)", "category": "Protein", "calories": 116, "protein": 26, "carbs": 0, "fats": 0.8, "serving": "1 can (142g)", "g": 142},
-        {"name": "Tuna Steak", "category": "Protein", "calories": 144, "protein": 30, "carbs": 0, "fats": 1.2, "serving": "100g", "g": 100},
-        {"name": "Tilapia", "category": "Protein", "calories": 128, "protein": 26, "carbs": 0, "fats": 2.7, "serving": "1 fillet (87g)", "g": 87},
-        {"name": "Cod", "category": "Protein", "calories": 82, "protein": 18, "carbs": 0, "fats": 0.7, "serving": "100g", "g": 100},
-        {"name": "Halibut", "category": "Protein", "calories": 111, "protein": 23, "carbs": 0, "fats": 1.6, "serving": "100g", "g": 100},
-        {"name": "Mahi Mahi", "category": "Protein", "calories": 109, "protein": 24, "carbs": 0, "fats": 0.9, "serving": "100g", "g": 100},
-        {"name": "Shrimp (cooked)", "category": "Protein", "calories": 99, "protein": 24, "carbs": 0, "fats": 0.3, "serving": "100g", "g": 100},
-        {"name": "Scallops", "category": "Protein", "calories": 88, "protein": 18, "carbs": 4.7, "fats": 0.8, "serving": "100g", "g": 100},
-        {"name": "Crab Meat", "category": "Protein", "calories": 97, "protein": 19, "carbs": 0, "fats": 1.5, "serving": "100g", "g": 100},
-        {"name": "Lobster", "category": "Protein", "calories": 89, "protein": 19, "carbs": 0, "fats": 0.9, "serving": "100g", "g": 100},
-        {"name": "Eggs (whole, large)", "category": "Protein", "calories": 155, "protein": 13, "carbs": 1.1, "fats": 11, "serving": "2 large eggs", "g": 100},
-        {"name": "Egg Whites", "category": "Protein", "calories": 52, "protein": 11, "carbs": 0.7, "fats": 0.2, "serving": "100g (3 whites)", "g": 100},
-        {"name": "Egg Yolks", "category": "Protein", "calories": 322, "protein": 16, "carbs": 3.6, "fats": 27, "serving": "100g", "g": 100},
-        {"name": "Greek Yogurt (non-fat)", "category": "Protein", "calories": 59, "protein": 10, "carbs": 3.6, "fats": 0.4, "serving": "100g", "g": 100},
-        {"name": "Greek Yogurt (2%)", "category": "Protein", "calories": 73, "protein": 9, "carbs": 3.9, "fats": 2, "serving": "100g", "g": 100},
-        {"name": "Greek Yogurt (full-fat)", "category": "Protein", "calories": 97, "protein": 9, "carbs": 4, "fats": 5, "serving": "100g", "g": 100},
-        {"name": "Cottage Cheese (1%)", "category": "Protein", "calories": 72, "protein": 12, "carbs": 3, "fats": 1, "serving": "100g", "g": 100},
-        {"name": "Cottage Cheese (2%)", "category": "Protein", "calories": 81, "protein": 11, "carbs": 3.4, "fats": 2.3, "serving": "100g", "g": 100},
-        {"name": "Ricotta Cheese (part-skim)", "category": "Protein", "calories": 138, "protein": 11, "carbs": 5.1, "fats": 8, "serving": "100g", "g": 100},
-        {"name": "Tofu (firm)", "category": "Protein", "calories": 144, "protein": 17, "carbs": 3, "fats": 9, "serving": "100g", "g": 100},
-        {"name": "Tofu (silken)", "category": "Protein", "calories": 55, "protein": 4.8, "carbs": 1.9, "fats": 2.7, "serving": "100g", "g": 100},
-        {"name": "Tempeh", "category": "Protein", "calories": 193, "protein": 20, "carbs": 9, "fats": 11, "serving": "100g", "g": 100},
-        {"name": "Seitan", "category": "Protein", "calories": 370, "protein": 75, "carbs": 14, "fats": 1.9, "serving": "100g", "g": 100},
-        {"name": "Protein Powder (Whey Isolate)", "category": "Protein", "calories": 120, "protein": 24, "carbs": 3, "fats": 1.5, "serving": "1 scoop (30g)", "g": 30},
-        {"name": "Protein Powder (Casein)", "category": "Protein", "calories": 120, "protein": 24, "carbs": 3, "fats": 1, "serving": "1 scoop (33g)", "g": 33},
-        {"name": "Protein Powder (Plant-Based)", "category": "Protein", "calories": 110, "protein": 20, "carbs": 6, "fats": 2, "serving": "1 scoop (30g)", "g": 30},
-        {"name": "Beef Jerky", "category": "Protein", "calories": 410, "protein": 33, "carbs": 11, "fats": 25, "serving": "100g", "g": 100},
-        {"name": "Turkey Jerky", "category": "Protein", "calories": 277, "protein": 50, "carbs": 4.7, "fats": 5.4, "serving": "100g", "g": 100},
-        {"name": "Sardines (canned)", "category": "Protein", "calories": 208, "protein": 25, "carbs": 0, "fats": 11, "serving": "100g", "g": 100},
-        {"name": "Anchovies", "category": "Protein", "calories": 210, "protein": 29, "carbs": 0, "fats": 10, "serving": "100g", "g": 100},
-        {"name": "Mackerel", "category": "Protein", "calories": 205, "protein": 19, "carbs": 0, "fats": 14, "serving": "100g", "g": 100},
+# ──────────────────────────────────────────────────────────────────────────────
+# DATA
+# Each tuple: (name, brand, category, tags_json, is_indian,
+#              serving_size, serving_unit, serving_label,
+#              calories, protein, carbs, fat, fiber, sugar, sodium, sat_fat)
+# All macro values are PER SERVING (not per 100 g).
+# ──────────────────────────────────────────────────────────────────────────────
 
-        # CARBOHYDRATES (150 items)
-        {"name": "White Rice (cooked)", "category": "Carbs", "calories": 130, "protein": 2.7, "carbs": 28, "fats": 0.3, "serving": "1 cup", "g": 158},
-        {"name": "Brown Rice (cooked)", "category": "Carbs", "calories": 112, "protein": 2.6, "carbs": 24, "fats": 0.9, "serving": "1 cup", "g": 195},
-        {"name": "Jasmine Rice (cooked)", "category": "Carbs", "calories": 129, "protein": 2.6, "carbs": 28, "fats": 0.2, "serving": "1 cup", "g": 140},
-        {"name": "Basmati Rice (cooked)", "category": "Carbs", "calories": 121, "protein": 2.5, "carbs": 25, "fats": 0.4, "serving": "1 cup", "g": 140},
-        {"name": "Wild Rice (cooked)", "category": "Carbs", "calories": 101, "protein": 4, "carbs": 21, "fats": 0.3, "serving": "1 cup", "g": 164},
-        {"name": "Quinoa (cooked)", "category": "Carbs", "calories": 120, "protein": 4.4, "carbs": 21, "fats": 1.9, "serving": "1 cup", "g": 185},
-        {"name": "Oats (dry)", "category": "Carbs", "calories": 389, "protein": 17, "carbs": 66, "fats": 6.9, "serving": "100g", "g": 100},
-        {"name": "Oatmeal (cooked)", "category": "Carbs", "calories": 71, "protein": 2.5, "carbs": 12, "fats": 1.5, "serving": "1 cup", "g": 234},
-        {"name": "Steel Cut Oats", "category": "Carbs", "calories": 150, "protein": 5, "carbs": 27, "fats": 2.5, "serving": "40g", "g": 40},
-        {"name": "Instant Oats", "category": "Carbs", "calories": 365, "protein": 13, "carbs": 68, "fats": 6.3, "serving": "100g", "g": 100},
-        {"name": "Sweet Potato", "category": "Carbs", "calories": 86, "protein": 1.6, "carbs": 20, "fats": 0.1, "serving": "1 medium", "g": 130},
-        {"name": "Potato (white)", "category": "Carbs", "calories": 77, "protein": 2, "carbs": 17, "fats": 0.1, "serving": "1 medium", "g": 150},
-        {"name": "Red Potato", "category": "Carbs", "calories": 70, "protein": 1.9, "carbs": 16, "fats": 0.1, "serving": "1 medium", "g": 150},
-        {"name": "Yukon Gold Potato", "category": "Carbs", "calories": 80, "protein": 2, "carbs": 18, "fats": 0.1, "serving": "1 medium", "g": 150},
-        {"name": "Whole Wheat Pasta (cooked)", "category": "Carbs", "calories": 124, "protein": 5.3, "carbs": 26, "fats": 0.5, "serving": "1 cup", "g": 140},
-        {"name": "White Pasta (cooked)", "category": "Carbs", "calories": 131, "protein": 5, "carbs": 25, "fats": 1.1, "serving": "1 cup", "g": 140},
-        {"name": "Penne Pasta (cooked)", "category": "Carbs", "calories": 131, "protein": 5, "carbs": 25, "fats": 1.1, "serving": "1 cup", "g": 107},
-        {"name": "Spaghetti (cooked)", "category": "Carbs", "calories": 131, "protein": 5, "carbs": 25, "fats": 1.1, "serving": "1 cup", "g": 140},
-        {"name": "Whole Wheat Bread", "category": "Carbs", "calories": 247, "protein": 13, "carbs": 41, "fats": 3.4, "serving": "2 slices", "g": 56},
-        {"name": "White Bread", "category": "Carbs", "calories": 265, "protein": 9, "carbs": 49, "fats": 3.2, "serving": "2 slices", "g": 60},
-        {"name": "Sourdough Bread", "category": "Carbs", "calories": 174, "protein": 7, "carbs": 33, "fats": 1.1, "serving": "2 slices", "g": 64},
-        {"name": "Rye Bread", "category": "Carbs", "calories": 165, "protein": 6, "carbs": 30, "fats": 2.2, "serving": "2 slices", "g": 64},
-        {"name": "Ezekiel Bread", "category": "Carbs", "calories": 80, "protein": 4, "carbs": 15, "fats": 0.5, "serving": "1 slice", "g": 34},
-        {"name": "Bagel (plain)", "category": "Carbs", "calories": 289, "protein": 11, "carbs": 56, "fats": 1.7, "serving": "1 bagel", "g": 105},
-        {"name": "English Muffin (whole wheat)", "category": "Carbs", "calories": 134, "protein": 6, "carbs": 27, "fats": 1.5, "serving": "1 muffin", "g": 66},
-        {"name": "Tortilla (whole wheat)", "category": "Carbs", "calories": 120, "protein": 4, "carbs": 24, "fats": 2, "serving": "1 tortilla", "g": 50},
-        {"name": "Tortilla (flour)", "category": "Carbs", "calories": 159, "protein": 4.4, "carbs": 27, "fats": 3.5, "serving": "1 tortilla", "g": 49},
-        {"name": "Pita Bread (whole wheat)", "category": "Carbs", "calories": 170, "protein": 6, "carbs": 35, "fats": 1.7, "serving": "1 pita", "g": 64},
-        {"name": "Banana", "category": "Carbs", "calories": 89, "protein": 1.1, "carbs": 23, "fats": 0.3, "serving": "1 medium", "g": 118},
-        {"name": "Apple", "category": "Carbs", "calories": 52, "protein": 0.3, "carbs": 14, "fats": 0.2, "serving": "1 medium", "g": 182},
-        {"name": "Orange", "category": "Carbs", "calories": 47, "protein": 0.9, "carbs": 12, "fats": 0.1, "serving": "1 medium", "g": 131},
-        {"name": "Grapes", "category": "Carbs", "calories": 69, "protein": 0.7, "carbs": 18, "fats": 0.2, "serving": "1 cup", "g": 151},
-        {"name": "Blueberries", "category": "Carbs", "calories": 57, "protein": 0.7, "carbs": 14, "fats": 0.3, "serving": "1 cup", "g": 148},
-        {"name": "Strawberries", "category": "Carbs", "calories": 32, "protein": 0.7, "carbs": 7.7, "fats": 0.3, "serving": "1 cup", "g": 152},
-        {"name": "Raspberries", "category": "Carbs", "calories": 52, "protein": 1.2, "carbs": 12, "fats": 0.7, "serving": "1 cup", "g": 123},
-        {"name": "Blackberries", "category": "Carbs", "calories": 43, "protein": 1.4, "carbs": 10, "fats": 0.5, "serving": "1 cup", "g": 144},
-        {"name": "Mango", "category": "Carbs", "calories": 60, "protein": 0.8, "carbs": 15, "fats": 0.4, "serving": "100g", "g": 100},
-        {"name": "Pineapple", "category": "Carbs", "calories": 50, "protein": 0.5, "carbs": 13, "fats": 0.1, "serving": "100g", "g": 100},
-        {"name": "Watermelon", "category": "Carbs", "calories": 30, "protein": 0.6, "carbs": 7.6, "fats": 0.2, "serving": "1 cup", "g": 152},
-        {"name": "Cantaloupe", "category": "Carbs", "calories": 34, "protein": 0.8, "carbs": 8.2, "fats": 0.2, "serving": "1 cup", "g": 160},
-        {"name": "Honeydew Melon", "category": "Carbs", "calories": 36, "protein": 0.5, "carbs": 9.1, "fats": 0.1, "serving": "1 cup", "g": 170},
-        {"name": "Peach", "category": "Carbs", "calories": 39, "protein": 0.9, "carbs": 9.5, "fats": 0.3, "serving": "1 medium", "g": 150},
-        {"name": "Pear", "category": "Carbs", "calories": 57, "protein": 0.4, "carbs": 15, "fats": 0.1, "serving": "100g", "g": 100},
-        {"name": "Plum", "category": "Carbs", "calories": 46, "protein": 0.7, "carbs": 11, "fats": 0.3, "serving": "100g", "g": 100},
-        {"name": "Cherries", "category": "Carbs", "calories": 50, "protein": 1, "carbs": 12, "fats": 0.3, "serving": "100g", "g": 100},
-        {"name": "Kiwi", "category": "Carbs", "calories": 61, "protein": 1.1, "carbs": 15, "fats": 0.5, "serving": "100g", "g": 100},
-        {"name": "Grapefruit", "category": "Carbs", "calories": 42, "protein": 0.8, "carbs": 11, "fats": 0.1, "serving": "100g", "g": 100},
-        {"name": "Dates (dried)", "category": "Carbs", "calories": 277, "protein": 1.8, "carbs": 75, "fats": 0.2, "serving": "100g", "g": 100},
-        {"name": "Raisins", "category": "Carbs", "calories": 299, "protein": 3.1, "carbs": 79, "fats": 0.5, "serving": "100g", "g": 100},
-        {"name": "Couscous (cooked)", "category": "Carbs", "calories": 112, "protein": 3.8, "carbs": 23, "fats": 0.2, "serving": "1 cup", "g": 157},
+FOODS = [
 
-        # FATS & NUTS (100 items)
-        {"name": "Avocado", "category": "Fats", "calories": 160, "protein": 2, "carbs": 8.5, "fats": 15, "serving": "1/2 avocado", "g": 100},
-        {"name": "Almonds", "category": "Fats", "calories": 579, "protein": 21, "carbs": 22, "fats": 50, "serving": "100g", "g": 100},
-        {"name": "Walnuts", "category": "Fats", "calories": 654, "protein": 15, "carbs": 14, "fats": 65, "serving": "100g", "g": 100},
-        {"name": "Cashews", "category": "Fats", "calories": 553, "protein": 18, "carbs": 30, "fats": 44, "serving": "100g", "g": 100},
-        {"name": "Pecans", "category": "Fats", "calories": 691, "protein": 9.2, "carbs": 14, "fats": 72, "serving": "100g", "g": 100},
-        {"name": "Pistachios", "category": "Fats", "calories": 560, "protein": 20, "carbs": 28, "fats": 45, "serving": "100g", "g": 100},
-        {"name": "Macadamia Nuts", "category": "Fats", "calories": 718, "protein": 7.9, "carbs": 14, "fats": 76, "serving": "100g", "g": 100},
-        {"name": "Brazil Nuts", "category": "Fats", "calories": 656, "protein": 14, "carbs": 12, "fats": 66, "serving": "100g", "g": 100},
-        {"name": "Hazelnuts", "category": "Fats", "calories": 628, "protein": 15, "carbs": 17, "fats": 61, "serving": "100g", "g": 100},
-        {"name": "Pine Nuts", "category": "Fats", "calories": 673, "protein": 14, "carbs": 13, "fats": 68, "serving": "100g", "g": 100},
-        {"name": "Peanuts", "category": "Fats", "calories": 567, "protein": 26, "carbs": 16, "fats": 49, "serving": "100g", "g": 100},
-        {"name": "Peanut Butter", "category": "Fats", "calories": 588, "protein": 25, "carbs": 20, "fats": 50, "serving": "100g", "g": 100},
-        {"name": "Almond Butter", "category": "Fats", "calories": 614, "protein": 21, "carbs": 21, "fats": 56, "serving": "100g", "g": 100},
-        {"name": "Cashew Butter", "category": "Fats", "calories": 587, "protein": 18, "carbs": 28, "fats": 49, "serving": "100g", "g": 100},
-        {"name": "Sunflower Seed Butter", "category": "Fats", "calories": 617, "protein": 19, "carbs": 23, "fats": 52, "serving": "100g", "g": 100},
-        {"name": "Olive Oil", "category": "Fats", "calories": 884, "protein": 0, "carbs": 0, "fats": 100, "serving": "1 tbsp", "g": 13.5},
-        {"name": "Coconut Oil", "category": "Fats", "calories": 862, "protein": 0, "carbs": 0, "fats": 100, "serving": "1 tbsp", "g": 13.6},
-        {"name": "Avocado Oil", "category": "Fats", "calories": 884, "protein": 0, "carbs": 0, "fats": 100, "serving": "1 tbsp", "g": 14},
-        {"name": "Butter", "category": "Fats", "calories": 717, "protein": 0.9, "carbs": 0.1, "fats": 81, "serving": "1 tbsp", "g": 14.2},
-        {"name": "Ghee (clarified butter)", "category": "Fats", "calories": 900, "protein": 0, "carbs": 0, "fats": 100, "serving": "1 tbsp", "g": 14},
-        {"name": "Cheese (Cheddar)", "category": "Fats", "calories": 402, "protein": 25, "carbs": 1.3, "fats": 33, "serving": "100g", "g": 100},
-        {"name": "Mozzarella (part-skim)", "category": "Fats", "calories": 254, "protein": 24, "carbs": 3.1, "fats": 16, "serving": "100g", "g": 100},
-        {"name": "Parmesan", "category": "Fats", "calories": 431, "protein": 38, "carbs": 4.1, "fats": 29, "serving": "100g", "g": 100},
-        {"name": "Feta Cheese", "category": "Fats", "calories": 264, "protein": 14, "carbs": 4.1, "fats": 21, "serving": "100g", "g": 100},
-        {"name": "Swiss Cheese", "category": "Fats", "calories": 380, "protein": 27, "carbs": 5.4, "fats": 28, "serving": "100g", "g": 100},
-        {"name": "Cream Cheese", "category": "Fats", "calories": 342, "protein": 6, "carbs": 4.1, "fats": 34, "serving": "100g", "g": 100},
-        {"name": "Chia Seeds", "category": "Fats", "calories": 486, "protein": 17, "carbs": 42, "fats": 31, "serving": "100g", "g": 100},
-        {"name": "Flax Seeds", "category": "Fats", "calories": 534, "protein": 18, "carbs": 29, "fats": 42, "serving": "100g", "g": 100},
-        {"name": "Hemp Seeds", "category": "Fats", "calories": 553, "protein": 32, "carbs": 9, "fats": 49, "serving": "100g", "g": 100},
-        {"name": "Sunflower Seeds", "category": "Fats", "calories": 584, "protein": 21, "carbs": 20, "fats": 51, "serving": "100g", "g": 100},
-        {"name": "Pumpkin Seeds", "category": "Fats", "calories": 559, "protein": 30, "carbs": 14, "fats": 49, "serving": "100g", "g": 100},
-        {"name": "Dark Chocolate (70%)", "category": "Fats", "calories": 598, "protein": 7.8, "carbs": 46, "fats": 43, "serving": "100g", "g": 100},
-        {"name": "Dark Chocolate (85%)", "category": "Fats", "calories": 604, "protein": 12, "carbs": 31, "fats": 48, "serving": "100g", "g": 100},
-        {"name": "Coconut (shredded)", "category": "Fats", "calories": 354, "protein": 3.3, "carbs": 15, "fats": 33, "serving": "100g", "g": 100},
-        {"name": "Heavy Cream", "category": "Fats", "calories": 340, "protein": 2.1, "carbs": 2.7, "fats": 36, "serving": "100ml", "g": 100},
-        {"name": "Sour Cream", "category": "Fats", "calories": 193, "protein": 2.4, "carbs": 4.6, "fats": 19, "serving": "100g", "g": 100},
-        {"name": "Mayonnaise", "category": "Fats", "calories": 680, "protein": 1.1, "carbs": 0.9, "fats": 75, "serving": "100g", "g": 100},
-        {"name": "Tahini", "category": "Fats", "calories": 595, "protein": 18, "carbs": 21, "fats": 53, "serving": "100g", "g": 100},
-        {"name": "MCT Oil", "category": "Fats", "calories": 828, "protein": 0, "carbs": 0, "fats": 100, "serving": "1 tbsp", "g": 14},
-        {"name": "Fish Oil", "category": "Fats", "calories": 902, "protein": 0, "carbs": 0, "fats": 100, "serving": "1 tbsp", "g": 13.6},
+    # ── SOUTH INDIAN ──────────────────────────────────────────────────────────
+    ("Idli (steamed)", None, "South Indian", '["vegetarian","vegan","gluten-free"]', True,
+     2, "piece", "2 idlis (60 g)", 78, 3.8, 15.8, 0.4, 0.6, 0.2, 180, 0.1),
+    ("Dosa (plain)", None, "South Indian", '["vegetarian","vegan"]', True,
+     1, "piece", "1 dosa (80 g)", 133, 3.0, 25.0, 2.5, 0.5, 0.5, 210, 0.5),
+    ("Masala Dosa", None, "South Indian", '["vegetarian"]', True,
+     1, "piece", "1 masala dosa (180 g)", 300, 7.5, 48.0, 8.0, 2.0, 2.0, 420, 2.0),
+    ("Uttapam (onion-tomato)", None, "South Indian", '["vegetarian"]', True,
+     1, "piece", "1 uttapam (100 g)", 140, 4.5, 25.0, 3.0, 1.0, 1.5, 280, 0.8),
+    ("Medu Vada", None, "South Indian", '["vegetarian"]', True,
+     2, "piece", "2 vadas (80 g)", 240, 6.5, 22.0, 14.0, 1.5, 0.5, 310, 2.0),
+    ("Sambar (1 katori)", None, "South Indian", '["vegetarian","vegan","gluten-free"]', True,
+     150, "g", "1 katori (150 g)", 90, 5.3, 15.0, 2.3, 3.5, 3.0, 400, 0.5),
+    ("Coconut Chutney", None, "South Indian", '["vegetarian","vegan","gluten-free"]', True,
+     30, "g", "2 tbsp (30 g)", 65, 0.7, 3.2, 5.5, 1.2, 0.8, 90, 5.0),
+    ("Rasam", None, "South Indian", '["vegetarian","vegan","gluten-free"]', True,
+     200, "ml", "1 bowl (200 ml)", 55, 2.5, 9.5, 0.8, 1.2, 2.0, 350, 0.1),
+    ("Pongal (ven)", None, "South Indian", '["vegetarian","gluten-free"]', True,
+     200, "g", "1 serving (200 g)", 290, 9.0, 50.0, 5.5, 2.0, 1.0, 320, 2.0),
+    ("Upma", None, "South Indian", '["vegetarian"]', True,
+     200, "g", "1 serving (200 g)", 240, 7.0, 44.0, 4.0, 2.5, 1.5, 380, 1.0),
+    ("Poha (cooked)", None, "South Indian", '["vegetarian","gluten-free"]', True,
+     150, "g", "1 serving (150 g)", 194, 3.8, 42.0, 2.3, 1.0, 1.2, 290, 0.4),
+    ("Appam (1 piece)", None, "South Indian", '["vegetarian","vegan"]', True,
+     1, "piece", "1 appam (60 g)", 100, 2.5, 20.0, 1.5, 0.5, 0.8, 150, 0.3),
+    ("Puttu (with coconut)", None, "South Indian", '["vegetarian","gluten-free"]', True,
+     150, "g", "1 serving (150 g)", 225, 5.0, 40.0, 5.0, 2.0, 1.5, 180, 4.0),
+    ("Curd Rice", None, "South Indian", '["vegetarian","gluten-free"]', True,
+     200, "g", "1 serving (200 g)", 210, 6.0, 38.0, 3.5, 0.5, 3.0, 260, 2.0),
+    ("Tamarind Rice / Puliyodarai", None, "South Indian", '["vegetarian","vegan"]', True,
+     150, "g", "1 serving (150 g)", 270, 4.5, 50.0, 6.0, 1.5, 2.5, 480, 1.0),
+    ("Lemon Rice", None, "South Indian", '["vegetarian","vegan","gluten-free"]', True,
+     150, "g", "1 serving (150 g)", 235, 4.0, 44.0, 5.0, 1.0, 1.0, 320, 0.8),
+    ("Chicken Chettinad Curry", None, "South Indian", '["non-veg","gluten-free"]', True,
+     200, "g", "1 serving (200 g)", 310, 30.0, 8.0, 18.0, 1.5, 2.0, 680, 4.5),
+    ("Fish Curry (Kerala style)", None, "South Indian", '["non-veg","gluten-free"]', True,
+     200, "g", "1 serving (200 g)", 245, 24.0, 7.0, 14.0, 1.2, 2.5, 750, 8.0),
+    ("Prawn Masala", None, "South Indian", '["non-veg","gluten-free"]', True,
+     150, "g", "1 serving (150 g)", 195, 22.0, 6.5, 10.0, 1.0, 2.0, 650, 2.5),
 
-        # VEGETABLES (100 items)
-        {"name": "Broccoli (cooked)", "category": "Vegetables", "calories": 35, "protein": 2.4, "carbs": 7, "fats": 0.4, "serving": "1 cup", "g": 156},
-        {"name": "Spinach (raw)", "category": "Vegetables", "calories": 23, "protein": 2.9, "carbs": 3.6, "fats": 0.4, "serving": "1 cup", "g": 30},
-        {"name": "Kale (raw)", "category": "Vegetables", "calories": 49, "protein": 4.3, "carbs": 9, "fats": 0.9, "serving": "1 cup", "g": 67},
-        {"name": "Carrots (raw)", "category": "Vegetables", "calories": 41, "protein": 0.9, "carbs": 10, "fats": 0.2, "serving": "1 medium", "g": 61},
-        {"name": "Bell Pepper (red)", "category": "Vegetables", "calories": 20, "protein": 0.9, "carbs": 4.6, "fats": 0.2, "serving": "1 medium", "g": 119},
-        {"name": "Bell Pepper (green)", "category": "Vegetables", "calories": 20, "protein": 0.9, "carbs": 4.6, "fats": 0.2, "serving": "1 medium", "g": 119},
-        {"name": "Tomato (raw)", "category": "Vegetables", "calories": 18, "protein": 0.9, "carbs": 3.9, "fats": 0.2, "serving": "1 medium", "g": 123},
-        {"name": "Cherry Tomatoes", "category": "Vegetables", "calories": 18, "protein": 0.9, "carbs": 3.9, "fats": 0.2, "serving": "1 cup", "g": 149},
-        {"name": "Cucumber (raw)", "category": "Vegetables", "calories": 16, "protein": 0.7, "carbs": 3.6, "fats": 0.1, "serving": "1 cup", "g": 104},
-        {"name": "Lettuce (romaine)", "category": "Vegetables", "calories": 8, "protein": 0.6, "carbs": 1.5, "fats": 0.1, "serving": "1 cup", "g": 47},
-        {"name": "Lettuce (iceberg)", "category": "Vegetables", "calories": 14, "protein": 0.9, "carbs": 3, "fats": 0.1, "serving": "1 cup", "g": 72},
-        {"name": "Arugula", "category": "Vegetables", "calories": 25, "protein": 2.6, "carbs": 3.7, "fats": 0.7, "serving": "100g", "g": 100},
-        {"name": "Asparagus (cooked)", "category": "Vegetables", "calories": 20, "protein": 2.2, "carbs": 3.7, "fats": 0.2, "serving": "1 cup", "g": 180},
-        {"name": "Green Beans (cooked)", "category": "Vegetables", "calories": 35, "protein": 1.8, "carbs": 7.9, "fats": 0.1, "serving": "1 cup", "g": 125},
-        {"name": "Cauliflower (cooked)", "category": "Vegetables", "calories": 29, "protein": 2.3, "carbs": 6, "fats": 0.6, "serving": "1 cup", "g": 124},
-        {"name": "Brussels Sprouts (cooked)", "category": "Vegetables", "calories": 56, "protein": 4, "carbs": 11, "fats": 0.8, "serving": "1 cup", "g": 156},
-        {"name": "Zucchini (cooked)", "category": "Vegetables", "calories": 21, "protein": 1.5, "carbs": 3.9, "fats": 0.4, "serving": "1 cup", "g": 180},
-        {"name": "Mushrooms (raw)", "category": "Vegetables", "calories": 22, "protein": 3.1, "carbs": 3.3, "fats": 0.3, "serving": "1 cup", "g": 96},
-        {"name": "Onion (raw)", "category": "Vegetables", "calories": 40, "protein": 1.1, "carbs": 9.3, "fats": 0.1, "serving": "1 medium", "g": 110},
-        {"name": "Garlic", "category": "Vegetables", "calories": 149, "protein": 6.4, "carbs": 33, "fats": 0.5, "serving": "100g", "g": 100},
-        {"name": "Celery (raw)", "category": "Vegetables", "calories": 14, "protein": 0.7, "carbs": 3, "fats": 0.2, "serving": "1 cup", "g": 101},
-        {"name": "Eggplant (cooked)", "category": "Vegetables", "calories": 35, "protein": 0.8, "carbs": 8.6, "fats": 0.2, "serving": "1 cup", "g": 99},
-        {"name": "Cabbage (raw)", "category": "Vegetables", "calories": 22, "protein": 1, "carbs": 5.2, "fats": 0.1, "serving": "1 cup", "g": 89},
-        {"name": "Peas (cooked)", "category": "Vegetables", "calories": 84, "protein": 5.4, "carbs": 16, "fats": 0.2, "serving": "1 cup", "g": 160},
-        {"name": "Corn (cooked)", "category": "Vegetables", "calories": 96, "protein": 3.4, "carbs": 21, "fats": 1.5, "serving": "1 cup", "g": 145},
-        {"name": "Butternut Squash (cooked)", "category": "Vegetables", "calories": 40, "protein": 0.9, "carbs": 10, "fats": 0.1, "serving": "1 cup", "g": 205},
-        {"name": "Acorn Squash (cooked)", "category": "Vegetables", "calories": 56, "protein": 1.1, "carbs": 15, "fats": 0.1, "serving": "1 cup", "g": 205},
-        {"name": "Beets (cooked)", "category": "Vegetables", "calories": 44, "protein": 1.7, "carbs": 10, "fats": 0.2, "serving": "1 cup", "g": 136},
-        {"name": "Radishes (raw)", "category": "Vegetables", "calories": 16, "protein": 0.7, "carbs": 3.4, "fats": 0.1, "serving": "100g", "g": 100},
-        {"name": "Turnips (cooked)", "category": "Vegetables", "calories": 28, "protein": 0.9, "carbs": 6.4, "fats": 0.1, "serving": "1 cup", "g": 156},
+    # ── NORTH INDIAN ──────────────────────────────────────────────────────────
+    ("Roti / Chapati (whole wheat)", None, "North Indian", '["vegetarian","vegan"]', True,
+     1, "piece", "1 roti (40 g)", 71, 2.7, 13.0, 0.9, 1.5, 0.3, 120, 0.2),
+    ("Paratha (plain)", None, "North Indian", '["vegetarian"]', True,
+     1, "piece", "1 paratha (80 g)", 190, 4.5, 28.0, 7.0, 2.0, 0.5, 200, 2.5),
+    ("Aloo Paratha", None, "North Indian", '["vegetarian"]', True,
+     1, "piece", "1 paratha (130 g)", 260, 6.0, 40.0, 9.0, 2.5, 1.0, 310, 3.0),
+    ("Puri (fried)", None, "North Indian", '["vegetarian"]', True,
+     2, "piece", "2 puris (80 g)", 290, 5.5, 35.0, 15.0, 1.5, 0.5, 220, 3.5),
+    ("Naan (plain)", None, "North Indian", '["vegetarian"]', True,
+     1, "piece", "1 naan (90 g)", 262, 8.7, 45.0, 5.0, 1.5, 2.0, 480, 1.2),
+    ("Kulcha (butter naan)", None, "North Indian", '["vegetarian"]', True,
+     1, "piece", "1 kulcha (100 g)", 300, 9.0, 50.0, 8.0, 1.5, 2.5, 510, 3.0),
+    ("Dal Tadka", None, "North Indian", '["vegetarian","gluten-free"]', True,
+     200, "g", "1 katori (200 g)", 195, 11.5, 28.0, 4.5, 6.0, 2.0, 480, 1.0),
+    ("Dal Makhani", None, "North Indian", '["vegetarian","gluten-free"]', True,
+     200, "g", "1 katori (200 g)", 280, 12.0, 30.0, 12.0, 7.0, 2.5, 620, 5.0),
+    ("Palak Paneer", None, "North Indian", '["vegetarian","gluten-free"]', True,
+     200, "g", "1 serving (200 g)", 320, 16.0, 14.0, 23.0, 3.0, 2.0, 560, 9.0),
+    ("Paneer Butter Masala", None, "North Indian", '["vegetarian","gluten-free"]', True,
+     200, "g", "1 serving (200 g)", 380, 17.0, 18.0, 28.0, 2.0, 5.0, 720, 12.0),
+    ("Rajma Masala", None, "North Indian", '["vegetarian","vegan","gluten-free"]', True,
+     200, "g", "1 katori (200 g)", 240, 14.0, 38.0, 5.0, 8.0, 2.5, 580, 1.0),
+    ("Chole Masala", None, "North Indian", '["vegetarian","vegan","gluten-free"]', True,
+     200, "g", "1 katori (200 g)", 270, 15.0, 44.0, 6.5, 9.0, 3.0, 640, 1.2),
+    ("Chicken Tikka Masala", None, "North Indian", '["non-veg","gluten-free"]', True,
+     200, "g", "1 serving (200 g)", 340, 32.0, 12.0, 18.0, 1.5, 4.0, 820, 5.0),
+    ("Butter Chicken (Murgh Makhani)", None, "North Indian", '["non-veg","gluten-free"]', True,
+     200, "g", "1 serving (200 g)", 380, 30.0, 14.0, 24.0, 1.2, 5.0, 900, 9.0),
+    ("Mutton Rogan Josh", None, "North Indian", '["non-veg","gluten-free"]', True,
+     200, "g", "1 serving (200 g)", 420, 35.0, 9.0, 27.0, 1.5, 2.5, 780, 9.5),
+    ("Aloo Gobi", None, "North Indian", '["vegetarian","vegan","gluten-free"]', True,
+     200, "g", "1 serving (200 g)", 185, 5.5, 30.0, 6.0, 4.0, 3.0, 420, 1.0),
+    ("Matar Paneer", None, "North Indian", '["vegetarian","gluten-free"]', True,
+     200, "g", "1 serving (200 g)", 295, 14.0, 22.0, 18.0, 4.0, 3.5, 540, 7.0),
+    ("Khichdi", None, "North Indian", '["vegetarian","gluten-free"]', True,
+     200, "g", "1 katori (200 g)", 265, 10.0, 44.0, 5.0, 4.0, 1.0, 380, 1.5),
+    ("Chicken Biryani", None, "North Indian", '["non-veg"]', True,
+     300, "g", "1 plate (300 g)", 520, 38.0, 65.0, 12.0, 2.5, 3.5, 980, 3.5),
 
-        # LEGUMES (50 items)
-        {"name": "Black Beans (cooked)", "category": "Legumes", "calories": 132, "protein": 8.9, "carbs": 24, "fats": 0.5, "serving": "1 cup", "g": 172},
-        {"name": "Kidney Beans (cooked)", "category": "Legumes", "calories": 127, "protein": 8.7, "carbs": 23, "fats": 0.5, "serving": "1 cup", "g": 177},
-        {"name": "Chickpeas (cooked)", "category": "Legumes", "calories": 164, "protein": 8.9, "carbs": 27, "fats": 2.6, "serving": "1 cup", "g": 164},
-        {"name": "Lentils (cooked)", "category": "Legumes", "calories": 116, "protein": 9, "carbs": 20, "fats": 0.4, "serving": "1 cup", "g": 198},
-        {"name": "Pinto Beans (cooked)", "category": "Legumes", "calories": 122, "protein": 7.7, "carbs": 22, "fats": 0.6, "serving": "1 cup", "g": 171},
-        {"name": "Navy Beans (cooked)", "category": "Legumes", "calories": 140, "protein": 8.2, "carbs": 26, "fats": 0.6, "serving": "1 cup", "g": 182},
-        {"name": "Lima Beans (cooked)", "category": "Legumes", "calories": 115, "protein": 7.3, "carbs": 21, "fats": 0.4, "serving": "1 cup", "g": 170},
-        {"name": "Edamame (cooked)", "category": "Legumes", "calories": 122, "protein": 11, "carbs": 10, "fats": 5, "serving": "1 cup", "g": 155},
-        {"name": "Hummus", "category": "Legumes", "calories": 166, "protein": 7.9, "carbs": 14, "fats": 10, "serving": "100g", "g": 100},
-        {"name": "Refried Beans", "category": "Legumes", "calories": 90, "protein": 5, "carbs": 15, "fats": 1.5, "serving": "1/2 cup", "g": 126},
+    # ── STREET FOOD / SNACKS ──────────────────────────────────────────────────
+    ("Samosa (1 piece)", None, "Street Food", '["vegetarian"]', True,
+     1, "piece", "1 samosa (80 g)", 262, 4.5, 32.0, 13.0, 2.0, 1.5, 420, 3.5),
+    ("Pakora / Bhajiya", None, "Street Food", '["vegetarian"]', True,
+     100, "g", "1 serving (100 g)", 274, 6.5, 30.0, 15.0, 2.5, 1.0, 380, 2.5),
+    ("Pav Bhaji", None, "Street Food", '["vegetarian"]', True,
+     250, "g", "1 plate (250 g)", 420, 10.0, 68.0, 13.0, 5.0, 6.0, 920, 4.5),
+    ("Bhel Puri", None, "Street Food", '["vegetarian","vegan"]', True,
+     150, "g", "1 serving (150 g)", 270, 6.5, 51.0, 6.0, 3.0, 4.0, 540, 1.0),
+    ("Sev Puri", None, "Street Food", '["vegetarian"]', True,
+     100, "g", "1 serving (100 g)", 230, 5.0, 35.0, 8.5, 2.0, 3.5, 480, 1.5),
+    ("Pani Puri / Golgappa (6 pcs)", None, "Street Food", '["vegetarian","vegan"]', True,
+     6, "piece", "6 pieces (80 g)", 185, 3.5, 36.0, 3.5, 1.5, 3.0, 360, 0.8),
+    ("Dhokla (2 pieces)", None, "Street Food", '["vegetarian"]', True,
+     2, "piece", "2 pieces (80 g)", 115, 5.2, 21.0, 1.5, 1.2, 2.0, 480, 0.3),
+    ("Vada Pav", None, "Street Food", '["vegetarian"]', True,
+     1, "piece", "1 vada pav (120 g)", 295, 7.5, 43.0, 11.0, 2.5, 2.0, 650, 2.5),
+    ("Poha (street style)", None, "Street Food", '["vegetarian"]', True,
+     150, "g", "1 plate (150 g)", 245, 5.0, 44.0, 6.5, 2.0, 2.5, 480, 1.5),
+    ("Roasted Makhana / Fox Nuts", None, "Street Food", '["vegetarian","vegan","gluten-free"]', True,
+     30, "g", "1 cup (30 g)", 107, 3.7, 22.0, 0.5, 0.3, 0.2, 55, 0.1),
+    ("Roasted Chana", None, "Street Food", '["vegetarian","vegan","gluten-free"]', True,
+     50, "g", "1 serving (50 g)", 182, 11.0, 26.0, 2.5, 5.5, 1.5, 90, 0.3),
 
-        # ── INDIAN STAPLES ──────────────────────────────────────────────────
-        # Dal & Legumes (Indian)
-        {"name": "Toor Dal (cooked)", "category": "Indian - Dal", "calories": 116, "protein": 7.5, "carbs": 20, "fats": 0.4, "serving": "1 katori (100g)", "g": 100},
-        {"name": "Moong Dal (cooked)", "category": "Indian - Dal", "calories": 105, "protein": 7.0, "carbs": 18, "fats": 0.4, "serving": "1 katori (100g)", "g": 100},
-        {"name": "Chana Dal (cooked)", "category": "Indian - Dal", "calories": 164, "protein": 8.7, "carbs": 27, "fats": 2.7, "serving": "1 katori (100g)", "g": 100},
-        {"name": "Masoor Dal (cooked)", "category": "Indian - Dal", "calories": 116, "protein": 9.0, "carbs": 20, "fats": 0.4, "serving": "1 katori (100g)", "g": 100},
-        {"name": "Urad Dal (cooked)", "category": "Indian - Dal", "calories": 127, "protein": 9.0, "carbs": 22, "fats": 0.6, "serving": "1 katori (100g)", "g": 100},
-        {"name": "Rajma (cooked)", "category": "Indian - Dal", "calories": 127, "protein": 8.0, "carbs": 23, "fats": 0.5, "serving": "1 katori (100g)", "g": 100},
-        {"name": "Chole / Chana (cooked)", "category": "Indian - Dal", "calories": 164, "protein": 8.9, "carbs": 27, "fats": 2.6, "serving": "1 katori (100g)", "g": 100},
-        {"name": "Lobiya / Black Eyed Peas (cooked)", "category": "Indian - Dal", "calories": 116, "protein": 7.7, "carbs": 21, "fats": 0.5, "serving": "1 katori (100g)", "g": 100},
-        {"name": "Matar / Green Peas (cooked)", "category": "Indian - Vegetables", "calories": 81, "protein": 5.4, "carbs": 14, "fats": 0.4, "serving": "1 katori (100g)", "g": 100},
+    # ── PROTEINS / MEAT / FISH ────────────────────────────────────────────────
+    ("Chicken Breast (cooked, boneless)", None, "Protein", '["non-veg","gluten-free","high-protein"]', False,
+     100, "g", "100 g", 165, 31.0, 0.0, 3.6, 0.0, 0.0, 74, 1.0),
+    ("Chicken Thigh (cooked, boneless)", None, "Protein", '["non-veg","gluten-free"]', False,
+     100, "g", "100 g", 209, 26.0, 0.0, 11.0, 0.0, 0.0, 95, 3.0),
+    ("Ground Chicken (cooked)", None, "Protein", '["non-veg","gluten-free"]', False,
+     100, "g", "100 g", 148, 21.0, 0.0, 7.0, 0.0, 0.0, 85, 2.0),
+    ("Mutton / Goat (cooked, boneless)", None, "Protein", '["non-veg","gluten-free"]', False,
+     100, "g", "100 g", 234, 28.0, 0.0, 13.0, 0.0, 0.0, 72, 5.0),
+    ("Lamb Mince (cooked)", None, "Protein", '["non-veg","gluten-free"]', False,
+     100, "g", "100 g", 215, 22.0, 2.0, 13.0, 0.0, 0.0, 78, 5.5),
+    ("Egg (whole, large)", None, "Protein", '["vegetarian","gluten-free"]', False,
+     1, "piece", "1 large egg (50 g)", 78, 6.3, 0.6, 5.3, 0.0, 0.3, 62, 1.6),
+    ("Egg White", None, "Protein", '["vegetarian","gluten-free","low-fat"]', False,
+     3, "piece", "3 egg whites (99 g)", 52, 10.9, 0.7, 0.2, 0.0, 0.4, 163, 0.0),
+    ("Rohu Fish (cooked)", None, "Protein", '["non-veg","gluten-free"]', True,
+     100, "g", "100 g", 97, 17.0, 0.0, 2.8, 0.0, 0.0, 68, 0.8),
+    ("Pomfret (cooked)", None, "Protein", '["non-veg","gluten-free"]', True,
+     100, "g", "100 g", 86, 17.0, 0.0, 1.7, 0.0, 0.0, 65, 0.5),
+    ("Surmai / Kingfish (cooked)", None, "Protein", '["non-veg","gluten-free"]', True,
+     100, "g", "100 g", 108, 21.0, 0.0, 2.5, 0.0, 0.0, 90, 0.7),
+    ("Prawn (cooked)", None, "Protein", '["non-veg","gluten-free"]', True,
+     100, "g", "100 g", 99, 21.0, 0.9, 1.1, 0.0, 0.0, 230, 0.3),
+    ("Tuna (canned in water)", None, "Protein", '["non-veg","gluten-free","high-protein"]', False,
+     100, "g", "100 g (drained)", 116, 26.0, 0.0, 0.8, 0.0, 0.0, 230, 0.2),
+    ("Salmon (cooked)", None, "Protein", '["non-veg","gluten-free","omega-3"]', False,
+     100, "g", "100 g", 206, 22.0, 0.0, 13.0, 0.0, 0.0, 59, 3.0),
+    ("Paneer (full fat)", None, "Protein", '["vegetarian","gluten-free"]', True,
+     100, "g", "100 g", 265, 18.0, 1.2, 21.0, 0.0, 0.5, 30, 13.0),
+    ("Tofu (firm)", None, "Protein", '["vegan","gluten-free","high-protein"]', False,
+     100, "g", "100 g", 76, 8.1, 1.9, 4.8, 0.3, 0.5, 7, 0.7),
 
-        # Grains & Roti
-        {"name": "Roti / Chapati (whole wheat)", "category": "Indian - Grains", "calories": 71, "protein": 2.7, "carbs": 13, "fats": 0.9, "serving": "1 roti (40g)", "g": 40},
-        {"name": "Paratha (plain, without ghee)", "category": "Indian - Grains", "calories": 160, "protein": 4.0, "carbs": 28, "fats": 4.0, "serving": "1 paratha (80g)", "g": 80},
-        {"name": "Paratha (with ghee)", "category": "Indian - Grains", "calories": 200, "protein": 4.0, "carbs": 28, "fats": 8.0, "serving": "1 paratha (80g)", "g": 80},
-        {"name": "Aloo Paratha", "category": "Indian - Grains", "calories": 210, "protein": 5.0, "carbs": 32, "fats": 7.0, "serving": "1 paratha (100g)", "g": 100},
-        {"name": "Puri (fried)", "category": "Indian - Grains", "calories": 150, "protein": 3.0, "carbs": 18, "fats": 8.0, "serving": "1 puri (40g)", "g": 40},
-        {"name": "Naan (plain)", "category": "Indian - Grains", "calories": 262, "protein": 8.7, "carbs": 45, "fats": 5.0, "serving": "1 naan (90g)", "g": 90},
-        {"name": "Basmati Rice (cooked)", "category": "Indian - Grains", "calories": 121, "protein": 2.5, "carbs": 25, "fats": 0.4, "serving": "1 katori (140g)", "g": 140},
-        {"name": "Jeera Rice", "category": "Indian - Grains", "calories": 150, "protein": 2.8, "carbs": 28, "fats": 3.0, "serving": "1 katori (140g)", "g": 140},
-        {"name": "Khichdi", "category": "Indian - Grains", "calories": 130, "protein": 5.0, "carbs": 22, "fats": 2.5, "serving": "1 katori (150g)", "g": 150},
-        {"name": "Idli (steamed)", "category": "Indian - Grains", "calories": 39, "protein": 1.9, "carbs": 7.9, "fats": 0.2, "serving": "1 idli (30g)", "g": 30},
-        {"name": "Dosa (plain)", "category": "Indian - Grains", "calories": 133, "protein": 3.0, "carbs": 25, "fats": 2.5, "serving": "1 dosa (80g)", "g": 80},
-        {"name": "Masala Dosa", "category": "Indian - Grains", "calories": 206, "protein": 4.5, "carbs": 35, "fats": 5.8, "serving": "1 dosa (130g)", "g": 130},
-        {"name": "Uttapam", "category": "Indian - Grains", "calories": 107, "protein": 3.5, "carbs": 18, "fats": 2.5, "serving": "1 piece (80g)", "g": 80},
-        {"name": "Poha (cooked)", "category": "Indian - Grains", "calories": 130, "protein": 2.5, "carbs": 28, "fats": 1.5, "serving": "1 serving (120g)", "g": 120},
-        {"name": "Upma", "category": "Indian - Grains", "calories": 120, "protein": 3.5, "carbs": 22, "fats": 2.0, "serving": "1 serving (120g)", "g": 120},
-        {"name": "Semolina / Sooji (raw)", "category": "Indian - Grains", "calories": 360, "protein": 12, "carbs": 73, "fats": 1.1, "serving": "100g", "g": 100},
-        {"name": "Whole Wheat Flour (atta)", "category": "Indian - Grains", "calories": 341, "protein": 12, "carbs": 71, "fats": 1.7, "serving": "100g", "g": 100},
+    # ── LEGUMES / PULSES ──────────────────────────────────────────────────────
+    ("Toor Dal (cooked)", None, "Legumes", '["vegetarian","vegan","gluten-free"]', True,
+     150, "g", "1 katori (150 g)", 174, 11.3, 30.0, 0.6, 6.5, 2.0, 290, 0.1),
+    ("Moong Dal (cooked)", None, "Legumes", '["vegetarian","vegan","gluten-free"]', True,
+     150, "g", "1 katori (150 g)", 158, 10.5, 27.0, 0.6, 6.0, 1.5, 200, 0.1),
+    ("Chana Dal (cooked)", None, "Legumes", '["vegetarian","vegan","gluten-free"]', True,
+     150, "g", "1 katori (150 g)", 246, 13.0, 40.5, 4.0, 8.5, 3.0, 250, 0.4),
+    ("Masoor Dal (cooked)", None, "Legumes", '["vegetarian","vegan","gluten-free"]', True,
+     150, "g", "1 katori (150 g)", 174, 13.5, 30.0, 0.6, 6.5, 2.0, 185, 0.1),
+    ("Urad Dal (cooked)", None, "Legumes", '["vegetarian","vegan","gluten-free"]', True,
+     150, "g", "1 katori (150 g)", 190, 13.5, 33.0, 0.9, 7.0, 1.5, 225, 0.2),
+    ("Rajma / Kidney Beans (cooked)", None, "Legumes", '["vegetarian","vegan","gluten-free"]', True,
+     150, "g", "1 katori (150 g)", 190, 12.0, 34.5, 0.8, 8.5, 1.5, 210, 0.1),
+    ("Chole / Chickpeas (cooked)", None, "Legumes", '["vegetarian","vegan","gluten-free"]', True,
+     150, "g", "1 katori (150 g)", 246, 13.4, 40.5, 3.9, 9.0, 2.5, 245, 0.4),
+    ("Moong Sprouts (raw)", None, "Legumes", '["vegetarian","vegan","gluten-free","low-calorie"]', True,
+     100, "g", "1 katori (100 g)", 30, 3.0, 5.9, 0.2, 1.8, 0.0, 14, 0.1),
+    ("Lentils / Red Lentils (cooked)", None, "Legumes", '["vegan","gluten-free","high-protein"]', False,
+     150, "g", "1 cup (150 g)", 174, 13.5, 30.0, 0.6, 6.5, 2.0, 185, 0.1),
+    ("Black Beans (cooked)", None, "Legumes", '["vegan","gluten-free"]', False,
+     150, "g", "1 cup (150 g)", 198, 13.4, 36.0, 0.8, 10.0, 1.5, 165, 0.2),
+    ("Edamame (cooked)", None, "Legumes", '["vegan","gluten-free"]', False,
+     100, "g", "1 serving (100 g)", 122, 11.0, 10.0, 5.0, 5.0, 2.0, 63, 0.7),
 
-        # Dairy (Indian)
-        {"name": "Paneer (fresh)", "category": "Indian - Dairy", "calories": 265, "protein": 18, "carbs": 1.2, "fats": 21, "serving": "100g", "g": 100},
-        {"name": "Paneer (low fat)", "category": "Indian - Dairy", "calories": 170, "protein": 22, "carbs": 3.0, "fats": 8.0, "serving": "100g", "g": 100},
-        {"name": "Dahi / Curd (full fat)", "category": "Indian - Dairy", "calories": 61, "protein": 3.5, "carbs": 4.7, "fats": 3.3, "serving": "1 katori (100g)", "g": 100},
-        {"name": "Dahi / Curd (low fat)", "category": "Indian - Dairy", "calories": 40, "protein": 4.5, "carbs": 4.7, "fats": 0.5, "serving": "1 katori (100g)", "g": 100},
-        {"name": "Lassi (sweet)", "category": "Indian - Dairy", "calories": 90, "protein": 3.5, "carbs": 13, "fats": 2.5, "serving": "1 glass (200ml)", "g": 200},
-        {"name": "Chaas / Buttermilk", "category": "Indian - Dairy", "calories": 25, "protein": 1.8, "carbs": 3.0, "fats": 0.5, "serving": "1 glass (200ml)", "g": 200},
-        {"name": "Ghee", "category": "Indian - Dairy", "calories": 884, "protein": 0, "carbs": 0, "fats": 99, "serving": "1 tsp (5g)", "g": 5},
-        {"name": "Cow Milk (full fat)", "category": "Indian - Dairy", "calories": 67, "protein": 3.4, "carbs": 4.8, "fats": 3.9, "serving": "1 glass (200ml)", "g": 200},
-        {"name": "Cow Milk (toned)", "category": "Indian - Dairy", "calories": 44, "protein": 3.2, "carbs": 4.6, "fats": 1.5, "serving": "1 glass (200ml)", "g": 200},
-        {"name": "Skimmed Milk", "category": "Indian - Dairy", "calories": 31, "protein": 3.1, "carbs": 4.7, "fats": 0.1, "serving": "1 glass (200ml)", "g": 200},
-        {"name": "Malai / Cream", "category": "Indian - Dairy", "calories": 345, "protein": 2.5, "carbs": 3.5, "fats": 36, "serving": "100g", "g": 100},
-        {"name": "Khoa / Mawa", "category": "Indian - Dairy", "calories": 421, "protein": 14, "carbs": 44, "fats": 22, "serving": "100g", "g": 100},
+    # ── GRAINS & CARBS ────────────────────────────────────────────────────────
+    ("White Rice (cooked)", None, "Grains", '["vegan","gluten-free"]', False,
+     200, "g", "1 katori (200 g)", 260, 5.4, 56.0, 0.6, 0.4, 0.0, 2, 0.2),
+    ("Brown Rice (cooked)", None, "Grains", '["vegan","gluten-free"]', False,
+     200, "g", "1 katori (200 g)", 218, 5.0, 46.0, 1.8, 3.2, 0.0, 10, 0.4),
+    ("Oats (raw / dry)", None, "Grains", '["vegan"]', False,
+     50, "g", "½ cup dry (50 g)", 195, 6.7, 34.0, 3.5, 4.5, 0.5, 2, 0.6),
+    ("Quinoa (cooked)", None, "Grains", '["vegan","gluten-free"]', False,
+     150, "g", "1 cup (150 g)", 180, 6.6, 31.5, 2.9, 2.5, 0.9, 9, 0.4),
+    ("Whole Wheat Pasta (cooked)", None, "Grains", '["vegan"]', False,
+     150, "g", "1 serving (150 g)", 187, 8.0, 39.0, 0.8, 5.0, 2.0, 5, 0.1),
+    ("Sweet Potato (boiled)", None, "Grains", '["vegan","gluten-free"]', False,
+     150, "g", "1 medium (150 g)", 129, 2.4, 30.0, 0.2, 3.8, 9.4, 36, 0.0),
+    ("White Bread (slice)", None, "Grains", '["vegetarian"]', False,
+     2, "slice", "2 slices (60 g)", 159, 5.4, 29.4, 1.9, 1.2, 2.4, 265, 0.4),
+    ("Whole Wheat Bread (slice)", None, "Grains", '["vegan"]', False,
+     2, "slice", "2 slices (60 g)", 148, 7.8, 24.6, 2.0, 4.2, 2.2, 280, 0.3),
+    ("Semolina / Sooji (raw)", None, "Grains", '["vegan"]', True,
+     50, "g", "½ cup dry (50 g)", 180, 6.0, 36.5, 0.5, 1.5, 0.5, 1, 0.1),
+    ("Whole Wheat Flour / Atta (raw)", None, "Grains", '["vegan"]', True,
+     50, "g", "½ cup (50 g)", 171, 6.0, 35.5, 0.9, 3.8, 0.5, 1, 0.1),
+    ("Maize / Corn Flour (raw)", None, "Grains", '["vegan","gluten-free"]', False,
+     50, "g", "½ cup (50 g)", 182, 3.5, 39.0, 0.9, 2.0, 0.5, 2, 0.1),
+    ("Millet / Bajra (cooked)", None, "Grains", '["vegan","gluten-free"]', True,
+     150, "g", "1 katori (150 g)", 207, 5.5, 42.0, 1.5, 3.0, 0.5, 2, 0.3),
+    ("Jowar / Sorghum (cooked)", None, "Grains", '["vegan","gluten-free"]', True,
+     150, "g", "1 katori (150 g)", 194, 5.4, 41.0, 1.1, 4.0, 0.5, 3, 0.2),
+    ("Ragi / Finger Millet (cooked)", None, "Grains", '["vegan","gluten-free"]', True,
+     150, "g", "1 katori (150 g)", 175, 3.8, 38.0, 1.1, 3.5, 0.5, 5, 0.2),
 
-        # Vegetables (Indian)
-        {"name": "Palak / Spinach (raw)", "category": "Indian - Vegetables", "calories": 23, "protein": 2.9, "carbs": 3.6, "fats": 0.4, "serving": "1 cup (30g)", "g": 30},
-        {"name": "Aloo / Potato (boiled)", "category": "Indian - Vegetables", "calories": 77, "protein": 2.0, "carbs": 17, "fats": 0.1, "serving": "1 medium (150g)", "g": 150},
-        {"name": "Bhindi / Okra (cooked)", "category": "Indian - Vegetables", "calories": 33, "protein": 1.9, "carbs": 7.5, "fats": 0.2, "serving": "1 katori (100g)", "g": 100},
-        {"name": "Baingan / Brinjal (cooked)", "category": "Indian - Vegetables", "calories": 25, "protein": 1.0, "carbs": 5.5, "fats": 0.2, "serving": "1 katori (100g)", "g": 100},
-        {"name": "Lauki / Bottle Gourd (cooked)", "category": "Indian - Vegetables", "calories": 14, "protein": 0.6, "carbs": 3.4, "fats": 0.0, "serving": "1 katori (100g)", "g": 100},
-        {"name": "Karela / Bitter Gourd (cooked)", "category": "Indian - Vegetables", "calories": 20, "protein": 1.0, "carbs": 4.3, "fats": 0.2, "serving": "1 katori (100g)", "g": 100},
-        {"name": "Gobi / Cauliflower (cooked)", "category": "Indian - Vegetables", "calories": 25, "protein": 1.9, "carbs": 5.0, "fats": 0.3, "serving": "1 katori (100g)", "g": 100},
-        {"name": "Gajar / Carrot (raw)", "category": "Indian - Vegetables", "calories": 41, "protein": 0.9, "carbs": 10, "fats": 0.2, "serving": "1 medium (80g)", "g": 80},
-        {"name": "Torai / Ridge Gourd (cooked)", "category": "Indian - Vegetables", "calories": 17, "protein": 0.7, "carbs": 4.0, "fats": 0.1, "serving": "1 katori (100g)", "g": 100},
-        {"name": "Shimla Mirch / Capsicum (raw)", "category": "Indian - Vegetables", "calories": 20, "protein": 0.9, "carbs": 4.6, "fats": 0.2, "serving": "1 medium (100g)", "g": 100},
-        {"name": "Tamatar / Tomato (raw)", "category": "Indian - Vegetables", "calories": 18, "protein": 0.9, "carbs": 3.9, "fats": 0.2, "serving": "1 medium (100g)", "g": 100},
-        {"name": "Pyaaz / Onion (raw)", "category": "Indian - Vegetables", "calories": 40, "protein": 1.1, "carbs": 9.3, "fats": 0.1, "serving": "1 medium (100g)", "g": 100},
-        {"name": "Methi / Fenugreek Leaves (raw)", "category": "Indian - Vegetables", "calories": 49, "protein": 4.4, "carbs": 6.0, "fats": 0.9, "serving": "1 cup (30g)", "g": 30},
-        {"name": "Drumstick / Moringa (cooked)", "category": "Indian - Vegetables", "calories": 37, "protein": 2.1, "carbs": 8.5, "fats": 0.2, "serving": "1 katori (100g)", "g": 100},
-        {"name": "Arbi / Taro Root (cooked)", "category": "Indian - Vegetables", "calories": 112, "protein": 1.5, "carbs": 26, "fats": 0.1, "serving": "1 katori (100g)", "g": 100},
+    # ── VEGETABLES ────────────────────────────────────────────────────────────
+    ("Spinach / Palak (raw)", None, "Vegetables", '["vegan","gluten-free","low-calorie"]', True,
+     100, "g", "1 cup (100 g)", 23, 2.9, 3.6, 0.4, 2.2, 0.4, 79, 0.1),
+    ("Broccoli (cooked)", None, "Vegetables", '["vegan","gluten-free","low-calorie"]', False,
+     150, "g", "1 cup (150 g)", 55, 3.7, 11.2, 0.6, 5.1, 3.0, 64, 0.1),
+    ("Cauliflower / Gobi (cooked)", None, "Vegetables", '["vegan","gluten-free","low-calorie"]', True,
+     150, "g", "1 cup (150 g)", 36, 2.9, 7.5, 0.4, 3.5, 3.2, 52, 0.1),
+    ("Cabbage (raw)", None, "Vegetables", '["vegan","gluten-free","low-calorie"]', False,
+     100, "g", "1 cup (100 g)", 22, 1.0, 5.2, 0.1, 2.5, 2.8, 18, 0.0),
+    ("Carrot / Gajar (raw)", None, "Vegetables", '["vegan","gluten-free"]', True,
+     100, "g", "1 medium (100 g)", 41, 0.9, 9.6, 0.2, 2.8, 4.7, 69, 0.0),
+    ("Okra / Bhindi (cooked)", None, "Vegetables", '["vegan","gluten-free"]', True,
+     100, "g", "1 katori (100 g)", 33, 1.9, 7.5, 0.2, 3.2, 1.5, 8, 0.0),
+    ("Bitter Gourd / Karela (cooked)", None, "Vegetables", '["vegan","gluten-free","diabetic-friendly"]', True,
+     100, "g", "1 katori (100 g)", 20, 1.0, 4.3, 0.2, 2.8, 1.8, 5, 0.0),
+    ("Bottle Gourd / Lauki (cooked)", None, "Vegetables", '["vegan","gluten-free","low-calorie"]', True,
+     100, "g", "1 katori (100 g)", 14, 0.6, 3.4, 0.0, 1.6, 1.5, 3, 0.0),
+    ("Tomato (raw)", None, "Vegetables", '["vegan","gluten-free","low-calorie"]', False,
+     100, "g", "1 medium (100 g)", 18, 0.9, 3.9, 0.2, 1.2, 2.6, 5, 0.0),
+    ("Onion / Pyaaz (raw)", None, "Vegetables", '["vegan","gluten-free"]', True,
+     100, "g", "1 medium (100 g)", 40, 1.1, 9.3, 0.1, 1.7, 4.2, 4, 0.0),
+    ("Beetroot (cooked)", None, "Vegetables", '["vegan","gluten-free"]', False,
+     100, "g", "½ cup (100 g)", 44, 1.7, 10.0, 0.2, 2.0, 8.0, 77, 0.0),
+    ("Cucumber (raw)", None, "Vegetables", '["vegan","gluten-free","low-calorie"]', False,
+     100, "g", "½ cup (100 g)", 16, 0.7, 3.6, 0.1, 0.5, 1.7, 2, 0.0),
+    ("Bell Pepper / Capsicum (raw)", None, "Vegetables", '["vegan","gluten-free","low-calorie"]', True,
+     100, "g", "1 medium (100 g)", 20, 0.9, 4.6, 0.2, 1.7, 2.4, 4, 0.0),
+    ("Mushroom (raw)", None, "Vegetables", '["vegan","gluten-free","low-calorie"]', False,
+     100, "g", "1 cup (100 g)", 22, 3.1, 3.3, 0.3, 1.0, 1.5, 5, 0.0),
+    ("Peas / Matar (cooked)", None, "Vegetables", '["vegan","gluten-free"]', True,
+     100, "g", "½ cup (100 g)", 81, 5.4, 14.5, 0.4, 5.5, 5.7, 5, 0.1),
+    ("Green Beans (cooked)", None, "Vegetables", '["vegan","gluten-free","low-calorie"]', False,
+     100, "g", "½ cup (100 g)", 35, 1.8, 7.9, 0.1, 3.4, 1.5, 6, 0.0),
+    ("Zucchini (cooked)", None, "Vegetables", '["vegan","gluten-free","low-calorie"]', False,
+     100, "g", "½ cup (100 g)", 21, 1.5, 3.9, 0.4, 1.3, 3.1, 2, 0.1),
+    ("Drumstick / Moringa (cooked)", None, "Vegetables", '["vegan","gluten-free","superfood"]', True,
+     100, "g", "1 katori (100 g)", 37, 2.1, 8.5, 0.2, 3.2, 3.5, 42, 0.0),
+    ("Fenugreek Leaves / Methi (raw)", None, "Vegetables", '["vegan","gluten-free"]', True,
+     30, "g", "1 small bunch (30 g)", 15, 1.3, 1.8, 0.3, 1.2, 0.5, 20, 0.0),
+    ("Sweet Corn (cooked)", None, "Vegetables", '["vegan","gluten-free"]', False,
+     100, "g", "½ cup (100 g)", 96, 3.4, 21.0, 1.5, 2.4, 4.5, 15, 0.2),
 
-        # Non-Veg (Indian)
-        {"name": "Mutton / Goat (cooked, boneless)", "category": "Indian - Non Veg", "calories": 234, "protein": 28, "carbs": 0, "fats": 13, "serving": "100g", "g": 100},
-        {"name": "Lamb Keema (cooked)", "category": "Indian - Non Veg", "calories": 215, "protein": 22, "carbs": 2.0, "fats": 13, "serving": "100g", "g": 100},
-        {"name": "Chicken Tandoori", "category": "Indian - Non Veg", "calories": 150, "protein": 25, "carbs": 3.5, "fats": 4.5, "serving": "100g", "g": 100},
-        {"name": "Egg Bhurji (2 eggs)", "category": "Indian - Non Veg", "calories": 200, "protein": 14, "carbs": 4.0, "fats": 14, "serving": "1 serving (120g)", "g": 120},
-        {"name": "Boiled Egg", "category": "Indian - Non Veg", "calories": 78, "protein": 6.3, "carbs": 0.6, "fats": 5.3, "serving": "1 large egg (50g)", "g": 50},
-        {"name": "Rohu Fish (cooked)", "category": "Indian - Non Veg", "calories": 97, "protein": 17, "carbs": 0, "fats": 2.8, "serving": "100g", "g": 100},
-        {"name": "Pomfret (cooked)", "category": "Indian - Non Veg", "calories": 86, "protein": 17, "carbs": 0, "fats": 1.7, "serving": "100g", "g": 100},
-        {"name": "Prawn (cooked)", "category": "Indian - Non Veg", "calories": 99, "protein": 21, "carbs": 0.9, "fats": 1.1, "serving": "100g", "g": 100},
+    # ── FRUITS ────────────────────────────────────────────────────────────────
+    ("Banana (medium)", None, "Fruits", '["vegan","gluten-free"]', False,
+     1, "piece", "1 medium banana (120 g)", 107, 1.3, 27.5, 0.4, 3.1, 14.4, 1, 0.1),
+    ("Mango (Alphonso)", None, "Fruits", '["vegan","gluten-free"]', True,
+     150, "g", "1 cup (150 g)", 99, 1.4, 24.7, 0.6, 2.6, 22.5, 2, 0.1),
+    ("Apple (medium)", None, "Fruits", '["vegan","gluten-free"]', False,
+     1, "piece", "1 medium apple (182 g)", 95, 0.5, 25.1, 0.3, 4.4, 18.9, 2, 0.0),
+    ("Orange (medium)", None, "Fruits", '["vegan","gluten-free"]', False,
+     1, "piece", "1 medium orange (131 g)", 62, 1.2, 15.4, 0.2, 3.1, 12.2, 0, 0.0),
+    ("Papaya (medium slice)", None, "Fruits", '["vegan","gluten-free"]', True,
+     150, "g", "1 cup (150 g)", 65, 0.8, 16.5, 0.4, 2.5, 11.5, 12, 0.1),
+    ("Guava (medium)", None, "Fruits", '["vegan","gluten-free"]', True,
+     1, "piece", "1 medium guava (100 g)", 68, 2.5, 14.3, 1.0, 5.4, 8.9, 2, 0.3),
+    ("Watermelon (slice)", None, "Fruits", '["vegan","gluten-free","low-calorie"]', False,
+     300, "g", "1 slice (300 g)", 90, 1.8, 22.8, 0.6, 1.2, 18.6, 3, 0.1),
+    ("Grapes (red/green)", None, "Fruits", '["vegan","gluten-free"]', False,
+     100, "g", "½ cup (100 g)", 69, 0.7, 18.1, 0.2, 0.9, 15.5, 2, 0.1),
+    ("Pomegranate seeds", None, "Fruits", '["vegan","gluten-free"]', True,
+     100, "g", "½ cup (100 g)", 83, 1.7, 18.7, 1.2, 4.0, 13.7, 3, 0.1),
+    ("Pineapple", None, "Fruits", '["vegan","gluten-free"]', False,
+     150, "g", "1 cup (150 g)", 83, 0.9, 21.6, 0.2, 2.3, 16.3, 2, 0.0),
+    ("Strawberry", None, "Fruits", '["vegan","gluten-free","low-calorie"]', False,
+     150, "g", "1 cup (150 g)", 48, 1.0, 11.5, 0.5, 2.9, 7.4, 2, 0.0),
+    ("Blueberry", None, "Fruits", '["vegan","gluten-free","antioxidant"]', False,
+     100, "g", "½ cup (100 g)", 57, 0.7, 14.5, 0.3, 2.4, 10.0, 1, 0.0),
+    ("Kiwi (medium)", None, "Fruits", '["vegan","gluten-free"]', False,
+     1, "piece", "1 kiwi (75 g)", 46, 0.9, 11.1, 0.4, 2.2, 6.8, 3, 0.0),
+    ("Coconut (fresh, grated)", None, "Fruits", '["vegan","gluten-free"]', True,
+     30, "g", "2 tbsp grated (30 g)", 106, 1.0, 4.5, 9.9, 2.5, 1.9, 7, 8.8),
+    ("Amla / Indian Gooseberry", None, "Fruits", '["vegan","gluten-free","superfood"]', True,
+     100, "g", "5–6 pieces (100 g)", 44, 0.9, 10.2, 0.6, 4.3, 0.0, 1, 0.0),
+    ("Sapota / Chikoo (medium)", None, "Fruits", '["vegan","gluten-free"]', True,
+     1, "piece", "1 medium (100 g)", 83, 0.4, 19.9, 1.1, 5.3, 14.7, 12, 0.3),
 
-        # Snacks & Street Food
-        {"name": "Samosa (1 piece)", "category": "Indian - Snacks", "calories": 262, "protein": 4.5, "carbs": 32, "fats": 13, "serving": "1 samosa (80g)", "g": 80},
-        {"name": "Pakora / Bhajiya (100g)", "category": "Indian - Snacks", "calories": 274, "protein": 6.5, "carbs": 30, "fats": 15, "serving": "100g", "g": 100},
-        {"name": "Dhokla (2 pieces)", "category": "Indian - Snacks", "calories": 76, "protein": 3.5, "carbs": 14, "fats": 1.0, "serving": "2 pieces (80g)", "g": 80},
-        {"name": "Pav Bhaji (1 pav + bhaji)", "category": "Indian - Snacks", "calories": 300, "protein": 7.5, "carbs": 48, "fats": 9.5, "serving": "1 serving (200g)", "g": 200},
-        {"name": "Bhel Puri", "category": "Indian - Snacks", "calories": 180, "protein": 4.5, "carbs": 34, "fats": 4.0, "serving": "1 serving (100g)", "g": 100},
-        {"name": "Murukku (100g)", "category": "Indian - Snacks", "calories": 490, "protein": 7.5, "carbs": 65, "fats": 22, "serving": "100g", "g": 100},
-        {"name": "Chakli (100g)", "category": "Indian - Snacks", "calories": 480, "protein": 8.0, "carbs": 63, "fats": 21, "serving": "100g", "g": 100},
-        {"name": "Roasted Chana (100g)", "category": "Indian - Snacks", "calories": 364, "protein": 22, "carbs": 53, "fats": 5.0, "serving": "100g", "g": 100},
-        {"name": "Makhana / Fox Nuts (30g)", "category": "Indian - Snacks", "calories": 107, "protein": 3.7, "carbs": 22, "fats": 0.5, "serving": "1 cup (30g)", "g": 30},
-        {"name": "Sev (100g)", "category": "Indian - Snacks", "calories": 545, "protein": 13, "carbs": 60, "fats": 28, "serving": "100g", "g": 100},
+    # ── DAIRY ─────────────────────────────────────────────────────────────────
+    ("Cow Milk (full fat)", None, "Dairy", '["vegetarian","gluten-free"]', True,
+     250, "ml", "1 glass (250 ml)", 150, 7.9, 11.7, 8.0, 0.0, 12.4, 98, 5.1),
+    ("Cow Milk (toned / 1.5%)", None, "Dairy", '["vegetarian","gluten-free"]', True,
+     250, "ml", "1 glass (250 ml)", 103, 8.1, 12.3, 3.5, 0.0, 12.3, 102, 2.2),
+    ("Skimmed Milk", None, "Dairy", '["vegetarian","gluten-free","low-fat"]', False,
+     250, "ml", "1 glass (250 ml)", 83, 8.3, 12.5, 0.2, 0.0, 12.3, 103, 0.1),
+    ("Greek Yogurt (full fat)", None, "Dairy", '["vegetarian","gluten-free","high-protein"]', False,
+     150, "g", "½ cup (150 g)", 148, 13.5, 6.0, 7.5, 0.0, 4.5, 56, 4.8),
+    ("Curd / Dahi (full fat)", None, "Dairy", '["vegetarian","gluten-free"]', True,
+     150, "g", "1 katori (150 g)", 92, 5.3, 7.1, 5.0, 0.0, 5.4, 70, 3.2),
+    ("Ghee (pure)", None, "Dairy", '["vegetarian","gluten-free"]', True,
+     5, "g", "1 tsp (5 g)", 44, 0.0, 0.0, 5.0, 0.0, 0.0, 0, 3.1),
+    ("Butter (salted)", None, "Dairy", '["vegetarian","gluten-free"]', False,
+     10, "g", "1 tbsp (10 g)", 72, 0.1, 0.0, 8.1, 0.0, 0.0, 65, 5.1),
+    ("Paneer (low fat)", None, "Dairy", '["vegetarian","gluten-free"]', True,
+     100, "g", "100 g", 170, 22.0, 3.0, 8.0, 0.0, 0.5, 40, 5.0),
+    ("Buttermilk / Chaas", None, "Dairy", '["vegetarian","gluten-free","low-calorie"]', True,
+     200, "ml", "1 glass (200 ml)", 37, 2.4, 4.6, 0.9, 0.0, 4.6, 128, 0.6),
+    ("Whey Protein (Isolate)", None, "Dairy", '["vegetarian","high-protein"]', False,
+     30, "g", "1 scoop (30 g)", 110, 25.0, 2.0, 0.5, 0.0, 1.0, 160, 0.2),
 
-        # Cooked Dishes (Indian)
-        {"name": "Dal Tadka", "category": "Indian - Dishes", "calories": 95, "protein": 5.5, "carbs": 14, "fats": 2.8, "serving": "1 katori (150g)", "g": 150},
-        {"name": "Dal Makhani", "category": "Indian - Dishes", "calories": 135, "protein": 6.0, "carbs": 16, "fats": 5.5, "serving": "1 katori (150g)", "g": 150},
-        {"name": "Palak Paneer", "category": "Indian - Dishes", "calories": 168, "protein": 8.5, "carbs": 8.0, "fats": 12, "serving": "1 katori (150g)", "g": 150},
-        {"name": "Paneer Bhurji", "category": "Indian - Dishes", "calories": 220, "protein": 14, "carbs": 5.5, "fats": 16, "serving": "1 katori (150g)", "g": 150},
-        {"name": "Aloo Gobi (cooked)", "category": "Indian - Dishes", "calories": 90, "protein": 2.8, "carbs": 16, "fats": 2.8, "serving": "1 katori (150g)", "g": 150},
-        {"name": "Aloo Sabzi / Jeera Aloo", "category": "Indian - Dishes", "calories": 100, "protein": 2.0, "carbs": 19, "fats": 2.5, "serving": "1 katori (150g)", "g": 150},
-        {"name": "Rajma Masala", "category": "Indian - Dishes", "calories": 115, "protein": 7.0, "carbs": 19, "fats": 2.5, "serving": "1 katori (150g)", "g": 150},
-        {"name": "Chole Masala", "category": "Indian - Dishes", "calories": 135, "protein": 7.5, "carbs": 22, "fats": 3.5, "serving": "1 katori (150g)", "g": 150},
-        {"name": "Chicken Curry", "category": "Indian - Dishes", "calories": 165, "protein": 18, "carbs": 5.0, "fats": 8.5, "serving": "1 katori (150g)", "g": 150},
-        {"name": "Chicken Biryani", "category": "Indian - Dishes", "calories": 200, "protein": 14, "carbs": 26, "fats": 5.5, "serving": "1 serving (200g)", "g": 200},
-        {"name": "Mutton Biryani", "category": "Indian - Dishes", "calories": 235, "protein": 16, "carbs": 28, "fats": 7.5, "serving": "1 serving (200g)", "g": 200},
-        {"name": "Egg Curry", "category": "Indian - Dishes", "calories": 140, "protein": 10, "carbs": 5.5, "fats": 9.0, "serving": "1 katori (150g)", "g": 150},
-        {"name": "Sambar", "category": "Indian - Dishes", "calories": 60, "protein": 3.5, "carbs": 10, "fats": 1.5, "serving": "1 katori (150g)", "g": 150},
-        {"name": "Rasam", "category": "Indian - Dishes", "calories": 30, "protein": 1.5, "carbs": 5.5, "fats": 0.5, "serving": "1 bowl (200ml)", "g": 200},
-        {"name": "Vegetable Pulao", "category": "Indian - Dishes", "calories": 160, "protein": 3.5, "carbs": 30, "fats": 3.5, "serving": "1 katori (150g)", "g": 150},
-        {"name": "Raita", "category": "Indian - Dishes", "calories": 55, "protein": 2.5, "carbs": 6.5, "fats": 2.0, "serving": "1 katori (100g)", "g": 100},
+    # ── NUTS & SEEDS ──────────────────────────────────────────────────────────
+    ("Almonds / Badam (raw)", None, "Nuts & Seeds", '["vegan","gluten-free"]', True,
+     30, "g", "~22 almonds (30 g)", 174, 6.3, 6.6, 15.0, 3.5, 1.5, 0, 1.1),
+    ("Walnuts / Akhrot", None, "Nuts & Seeds", '["vegan","gluten-free","omega-3"]', True,
+     30, "g", "~14 halves (30 g)", 196, 4.6, 4.2, 19.6, 2.0, 0.6, 0, 1.8),
+    ("Cashews / Kaju (raw)", None, "Nuts & Seeds", '["vegan","gluten-free"]', True,
+     30, "g", "~18 nuts (30 g)", 166, 5.4, 9.0, 13.1, 0.9, 1.7, 3, 2.6),
+    ("Peanuts / Moongphali (roasted)", None, "Nuts & Seeds", '["vegan","gluten-free"]', True,
+     30, "g", "1 small handful (30 g)", 170, 7.8, 4.8, 14.8, 2.4, 1.1, 2, 2.1),
+    ("Pistachios", None, "Nuts & Seeds", '["vegan","gluten-free"]', False,
+     30, "g", "~49 nuts (30 g)", 168, 6.0, 8.4, 13.5, 3.0, 2.2, 0, 1.6),
+    ("Chia Seeds", None, "Nuts & Seeds", '["vegan","gluten-free","omega-3","superfood"]', False,
+     20, "g", "2 tbsp (20 g)", 97, 3.3, 8.4, 6.1, 6.8, 0.0, 4, 0.7),
+    ("Flaxseeds / Alsi", None, "Nuts & Seeds", '["vegan","gluten-free","omega-3"]', True,
+     15, "g", "1 tbsp (15 g)", 80, 2.7, 4.4, 6.3, 3.8, 0.2, 4, 0.5),
+    ("Sesame Seeds / Til", None, "Nuts & Seeds", '["vegan","gluten-free"]', True,
+     15, "g", "1 tbsp (15 g)", 86, 2.7, 3.5, 7.5, 1.2, 0.1, 2, 1.0),
+    ("Sunflower Seeds", None, "Nuts & Seeds", '["vegan","gluten-free"]', False,
+     30, "g", "¼ cup (30 g)", 175, 6.3, 6.0, 15.3, 2.4, 1.0, 1, 1.6),
+    ("Pumpkin Seeds / Pepitas", None, "Nuts & Seeds", '["vegan","gluten-free"]', False,
+     30, "g", "¼ cup (30 g)", 168, 9.0, 4.2, 14.7, 1.8, 0.5, 5, 2.5),
+    ("Hemp Seeds", None, "Nuts & Seeds", '["vegan","gluten-free","omega-3"]', False,
+     30, "g", "3 tbsp (30 g)", 166, 9.5, 2.7, 14.6, 1.2, 0.5, 1, 1.5),
+    ("Peanut Butter (natural, unsweetened)", None, "Nuts & Seeds", '["vegan","gluten-free"]', True,
+     32, "g", "2 tbsp (32 g)", 188, 8.0, 6.4, 16.0, 2.0, 1.8, 147, 3.0),
 
-        # Fruits (Common in India)
-        {"name": "Banana (medium)", "category": "Indian - Fruits", "calories": 89, "protein": 1.1, "carbs": 23, "fats": 0.3, "serving": "1 medium (100g)", "g": 100},
-        {"name": "Mango (Alphonso)", "category": "Indian - Fruits", "calories": 60, "protein": 0.8, "carbs": 15, "fats": 0.4, "serving": "100g", "g": 100},
-        {"name": "Papaya (raw)", "category": "Indian - Fruits", "calories": 43, "protein": 0.5, "carbs": 11, "fats": 0.3, "serving": "1 cup (140g)", "g": 140},
-        {"name": "Guava", "category": "Indian - Fruits", "calories": 68, "protein": 2.5, "carbs": 14, "fats": 1.0, "serving": "1 medium (100g)", "g": 100},
-        {"name": "Chikoo / Sapota", "category": "Indian - Fruits", "calories": 83, "protein": 0.4, "carbs": 20, "fats": 1.1, "serving": "1 medium (100g)", "g": 100},
-        {"name": "Jamun (100g)", "category": "Indian - Fruits", "calories": 60, "protein": 0.7, "carbs": 14, "fats": 0.2, "serving": "100g", "g": 100},
-        {"name": "Coconut (fresh, grated)", "category": "Indian - Fruits", "calories": 354, "protein": 3.3, "carbs": 15, "fats": 33, "serving": "100g", "g": 100},
-        {"name": "Amla / Indian Gooseberry", "category": "Indian - Fruits", "calories": 44, "protein": 0.9, "carbs": 10, "fats": 0.6, "serving": "100g", "g": 100},
+    # ── BEVERAGES ─────────────────────────────────────────────────────────────
+    ("Chai (with milk & sugar)", None, "Beverages", '["vegetarian"]', True,
+     150, "ml", "1 cup (150 ml)", 56, 1.8, 9.5, 1.5, 0.0, 9.0, 25, 0.9),
+    ("Black Coffee (unsweetened)", None, "Beverages", '["vegan","gluten-free","low-calorie"]', False,
+     240, "ml", "1 mug (240 ml)", 5, 0.3, 0.0, 0.0, 0.0, 0.0, 5, 0.0),
+    ("Coconut Water (fresh)", None, "Beverages", '["vegan","gluten-free"]', True,
+     200, "ml", "1 glass (200 ml)", 38, 0.4, 9.0, 0.2, 1.0, 6.0, 105, 0.0),
+    ("Orange Juice (fresh)", None, "Beverages", '["vegan","gluten-free"]', False,
+     200, "ml", "1 glass (200 ml)", 88, 1.4, 20.4, 0.4, 0.4, 16.4, 2, 0.0),
+    ("Mango Shake (with milk, no sugar)", None, "Beverages", '["vegetarian","gluten-free"]', True,
+     300, "ml", "1 glass (300 ml)", 210, 6.0, 38.0, 5.0, 1.5, 32.0, 70, 3.0),
+    ("Protein Shake (whey + water)", None, "Beverages", '["vegetarian","gluten-free","high-protein"]', False,
+     350, "ml", "1 shaker (350 ml)", 120, 24.0, 5.0, 1.5, 0.0, 2.0, 150, 0.5),
+    ("Green Tea (unsweetened)", None, "Beverages", '["vegan","gluten-free","low-calorie"]', False,
+     240, "ml", "1 cup (240 ml)", 2, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0.0),
+    ("Turmeric Milk / Haldi Doodh", None, "Beverages", '["vegetarian","gluten-free"]', True,
+     200, "ml", "1 glass (200 ml)", 108, 3.8, 12.0, 5.0, 0.3, 10.0, 62, 3.2),
+    ("Sports Drink (e.g., Gatorade)", None, "Beverages", '["vegan"]', False,
+     500, "ml", "1 bottle (500 ml)", 130, 0.0, 34.0, 0.0, 0.0, 34.0, 270, 0.0),
 
-        # Nuts & Seeds (Indian)
-        {"name": "Peanuts / Moongphali (roasted)", "category": "Indian - Nuts", "calories": 567, "protein": 26, "carbs": 16, "fats": 49, "serving": "100g", "g": 100},
-        {"name": "Til / Sesame Seeds", "category": "Indian - Nuts", "calories": 573, "protein": 18, "carbs": 23, "fats": 50, "serving": "100g", "g": 100},
-        {"name": "Sabja / Chia Seeds", "category": "Indian - Nuts", "calories": 486, "protein": 17, "carbs": 42, "fats": 31, "serving": "100g", "g": 100},
-        {"name": "Flaxseeds (alsi)", "category": "Indian - Nuts", "calories": 534, "protein": 18, "carbs": 29, "fats": 42, "serving": "100g", "g": 100},
-        {"name": "Cashews (kaju)", "category": "Indian - Nuts", "calories": 553, "protein": 18, "carbs": 30, "fats": 44, "serving": "100g", "g": 100},
-        {"name": "Almonds (badam)", "category": "Indian - Nuts", "calories": 579, "protein": 21, "carbs": 22, "fats": 50, "serving": "100g", "g": 100},
-        {"name": "Walnuts (akhrot)", "category": "Indian - Nuts", "calories": 654, "protein": 15, "carbs": 14, "fats": 65, "serving": "100g", "g": 100},
-        {"name": "Peanut Butter (unsweetened)", "category": "Indian - Nuts", "calories": 588, "protein": 25, "carbs": 20, "fats": 50, "serving": "100g", "g": 100},
+    # ── HEALTHY / FITNESS FOODS ───────────────────────────────────────────────
+    ("Avocado (half)", None, "Healthy Foods", '["vegan","gluten-free","keto"]', False,
+     100, "g", "½ avocado (100 g)", 160, 2.0, 8.5, 14.7, 6.7, 0.7, 7, 2.1),
+    ("Olive Oil (extra virgin)", None, "Healthy Foods", '["vegan","gluten-free","keto"]', False,
+     10, "ml", "1 tbsp (10 ml)", 88, 0.0, 0.0, 10.0, 0.0, 0.0, 0, 1.4),
+    ("Coconut Oil (virgin)", None, "Healthy Foods", '["vegan","gluten-free","keto"]', False,
+     10, "g", "1 tbsp (10 g)", 86, 0.0, 0.0, 10.0, 0.0, 0.0, 0, 8.8),
+    ("Dark Chocolate (85%)", None, "Healthy Foods", '["vegan","gluten-free"]', False,
+     30, "g", "3 squares (30 g)", 180, 2.5, 9.3, 14.5, 3.4, 3.9, 15, 8.9),
+    ("Overnight Oats (basic)", None, "Healthy Foods", '["vegetarian"]', False,
+     250, "g", "1 jar (250 g)", 310, 12.0, 52.0, 6.0, 7.0, 12.0, 125, 2.0),
+    ("Oatmeal (cooked with water)", None, "Healthy Foods", '["vegan","gluten-free"]', False,
+     250, "g", "1 bowl (250 g)", 150, 5.0, 27.0, 2.5, 3.5, 0.5, 5, 0.4),
+    ("Boiled Sweet Potato", None, "Healthy Foods", '["vegan","gluten-free"]', False,
+     150, "g", "1 medium (150 g)", 129, 2.4, 30.0, 0.2, 3.8, 9.4, 36, 0.0),
+    ("Hummus", None, "Healthy Foods", '["vegan","gluten-free"]', False,
+     40, "g", "2 tbsp (40 g)", 70, 3.2, 5.6, 4.4, 1.9, 0.4, 150, 0.6),
+    ("Egg Salad (no mayo)", None, "Healthy Foods", '["vegetarian","gluten-free","high-protein"]', False,
+     150, "g", "1 serving (150 g)", 185, 15.0, 3.5, 12.0, 0.0, 1.0, 210, 3.5),
+    ("Sprout Salad (moong + veggies)", None, "Healthy Foods", '["vegan","gluten-free","low-calorie"]', True,
+     150, "g", "1 bowl (150 g)", 95, 6.5, 16.0, 0.8, 4.0, 2.5, 80, 0.1),
+    ("Mixed Vegetable Salad", None, "Healthy Foods", '["vegan","gluten-free","low-calorie"]', False,
+     200, "g", "1 bowl (200 g)", 72, 3.0, 14.0, 0.8, 4.5, 6.0, 120, 0.1),
+    ("Grilled Chicken Salad", None, "Healthy Foods", '["non-veg","gluten-free","high-protein"]', False,
+     250, "g", "1 bowl (250 g)", 285, 32.0, 12.0, 12.0, 4.0, 4.0, 480, 2.5),
 
-        # Protein Supplements & Fitness Foods
-        {"name": "Whey Protein Powder", "category": "Supplements", "calories": 380, "protein": 80, "carbs": 5.0, "fats": 4.0, "serving": "1 scoop (30g)", "g": 30},
-        {"name": "Casein Protein Powder", "category": "Supplements", "calories": 370, "protein": 78, "carbs": 5.5, "fats": 3.5, "serving": "1 scoop (30g)", "g": 30},
-        {"name": "Soy Protein Powder", "category": "Supplements", "calories": 340, "protein": 75, "carbs": 7.0, "fats": 2.5, "serving": "1 scoop (30g)", "g": 30},
-        {"name": "Mass Gainer Powder", "category": "Supplements", "calories": 400, "protein": 30, "carbs": 60, "fats": 5.0, "serving": "1 scoop (100g)", "g": 100},
-        {"name": "Greek Yogurt", "category": "Dairy", "calories": 59, "protein": 10, "carbs": 3.6, "fats": 0.4, "serving": "100g", "g": 100},
-        {"name": "Cottage Cheese / Chhena", "category": "Indian - Dairy", "calories": 98, "protein": 11, "carbs": 3.4, "fats": 4.3, "serving": "100g", "g": 100},
-    ]
+    # ── FAST FOOD / RESTAURANT ────────────────────────────────────────────────
+    ("Burger (chicken, fast food)", None, "Fast Food", '["non-veg"]', False,
+     1, "piece", "1 burger (~180 g)", 420, 25.0, 42.0, 18.0, 2.0, 6.0, 830, 5.0),
+    ("Pizza (1 slice, cheese)", None, "Fast Food", '["vegetarian"]', False,
+     1, "slice", "1 slice (~107 g)", 272, 12.0, 33.0, 10.0, 2.0, 3.5, 551, 4.5),
+    ("French Fries (medium portion)", None, "Fast Food", '["vegan"]', False,
+     120, "g", "1 medium portion (120 g)", 365, 3.4, 48.0, 17.0, 4.0, 0.4, 290, 3.0),
+    ("Fried Chicken (1 piece)", None, "Fast Food", '["non-veg"]', False,
+     1, "piece", "1 piece (~85 g)", 245, 17.0, 11.0, 15.0, 0.5, 0.3, 430, 4.0),
+    ("Shawarma (chicken wrap)", None, "Fast Food", '["non-veg"]', False,
+     1, "piece", "1 wrap (~200 g)", 425, 28.0, 40.0, 16.0, 3.0, 4.0, 780, 4.5),
+    ("Paneer Wrap / Kathi Roll", None, "Fast Food", '["vegetarian"]', True,
+     1, "piece", "1 roll (~180 g)", 385, 15.0, 50.0, 14.0, 3.0, 4.5, 620, 4.5),
+    ("Pasta (cream sauce, restaurant)", None, "Fast Food", '["vegetarian"]', False,
+     300, "g", "1 plate (300 g)", 490, 16.0, 62.0, 20.0, 3.0, 6.0, 680, 9.0),
+]
 
 
-def seed_foods_database(db: Session):
-    """
-    Seed the foods table with all predefined foods.
-    Run once after migrations.
-    """
-    from datetime import datetime
+def create_tables():
+    """Create tables if they don't exist yet."""
+    Base.metadata.create_all(bind=engine)
 
-    foods_data = get_seed_foods()
-    now = datetime.utcnow()
 
-    print(f"Seeding {len(foods_data)} foods...")
+def seed():
+    create_tables()
+    db = SessionLocal()
+    try:
+        existing = db.query(FoodItem).count()
+        if existing > 0:
+            print(f"ℹ️  food_items table already has {existing} rows. Skipping seed.")
+            print("   To reseed, delete all rows first (DELETE FROM food_items;)")
+            return
 
-    for food_dict in foods_data:
-        # Calculate per 100g values
-        calories_per_100g = int(food_dict["calories"] / food_dict["g"] * 100)
-        protein_per_100g = round(food_dict["protein"] / food_dict["g"] * 100, 1)
-        carbs_per_100g = round(food_dict["carbs"] / food_dict["g"] * 100, 1)
-        fats_per_100g = round(food_dict["fats"] / food_dict["g"] * 100, 1)
+        print(f"🌱 Seeding {len(FOODS)} food items …")
 
-        # Create Food object
-        food = Food(
-            name=food_dict["name"],
-            category=food_dict["category"],
-            calories_per_100g=calories_per_100g,
-            protein_per_100g=protein_per_100g,
-            carbs_per_100g=carbs_per_100g,
-            fats_per_100g=fats_per_100g,
-            common_serving=food_dict["serving"],
-            common_serving_grams=food_dict["g"],
-            source=FoodSource.SEEDED,
-            is_verified=True,
-            times_used=0,
-            created_at=now,
-        )
+        for row in FOODS:
+            (name, brand, category, tags, is_indian,
+             serving_size, serving_unit, serving_label,
+             calories, protein, carbs, fat,
+             fiber, sugar, sodium, sat_fat) = row
 
-        db.add(food)
+            food = FoodItem(
+                name=name,
+                brand=brand,
+                category=category,
+                tags=tags,
+                is_indian=is_indian,
+                serving_size=float(serving_size),
+                serving_unit=serving_unit,
+                serving_label=serving_label,
+                calories=float(calories),
+                protein=float(protein),
+                carbs=float(carbs),
+                fat=float(fat),
+                fiber=float(fiber),
+                sugar=float(sugar),
+                sodium=float(sodium),
+                saturated_fat=float(sat_fat),
+                is_active=True,
+            )
+            db.add(food)
 
-    db.commit()
-    print(f"✅ Successfully seeded {len(foods_data)} foods!")
+        db.commit()
+        print(f"✅ {len(FOODS)} food items seeded successfully!")
+
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error seeding foods: {e}")
+        raise
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":
-    # Run this script directly
-    from app.db.database import SessionLocal
-    from app.models.fitness_tracking import Food, FoodSource
-
-    db = SessionLocal()
-
-    try:
-        # Check if foods already exist
-        existing_count = db.query(Food).filter(Food.source == FoodSource.SEEDED).count()
-
-        if existing_count > 0:
-            print(f"⚠️ Database already has {existing_count} seeded foods.")
-            response = input("Do you want to clear and reseed? (yes/no): ")
-
-            if response.lower() == "yes":
-                db.query(Food).filter(Food.source == FoodSource.SEEDED).delete()
-                db.commit()
-                print("✅ Cleared existing seeded foods")
-                seed_foods_database(db)
-            else:
-                print("❌ Skipping seed")
-        else:
-            seed_foods_database(db)
-
-    finally:
-        db.close()
+    seed()

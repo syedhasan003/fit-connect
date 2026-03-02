@@ -41,12 +41,17 @@ def create_reminder(
     scheduled_at_utc = ensure_utc(payload.scheduled_at)
 
     reminder = Reminder(
-        user_id=current_user.id,
-        type=payload.type,
-        message=payload.message,
-        scheduled_at=scheduled_at_utc,
-        is_active=payload.is_active,
-        consent_required=payload.consent_required,
+        user_id             = current_user.id,
+        type                = payload.type,
+        title               = payload.title or payload.message,
+        message             = payload.message,
+        scheduled_at        = scheduled_at_utc,
+        recurrence          = payload.recurrence or "once",
+        recurrence_days     = payload.recurrence_days,
+        recurrence_interval = payload.recurrence_interval,
+        category_meta       = payload.category_meta,
+        is_active           = payload.is_active,
+        consent_required    = payload.consent_required,
     )
 
     db.add(reminder)
@@ -80,12 +85,17 @@ def get_reminders(
 
     return [
         {
-            "id": r.id,
-            "type": r.type,
-            "message": r.message,
-            "scheduled_at": ensure_utc(r.scheduled_at).isoformat(),
-            "is_active": r.is_active,
-            "consent_required": r.consent_required,
+            "id":                   r.id,
+            "type":                 r.type,
+            "title":                r.title,
+            "message":              r.message,
+            "scheduled_at":         ensure_utc(r.scheduled_at).isoformat(),
+            "recurrence":           r.recurrence,
+            "recurrence_days":      r.recurrence_days,
+            "recurrence_interval":  r.recurrence_interval,
+            "category_meta":        r.category_meta,
+            "is_active":            r.is_active,
+            "consent_required":     r.consent_required,
         }
         for r in reminders
     ]
@@ -124,6 +134,16 @@ def update_reminder(
         reminder.is_active = payload.is_active
     if payload.consent_required is not None:
         reminder.consent_required = payload.consent_required
+    if payload.title is not None:
+        reminder.title = payload.title
+    if payload.recurrence is not None:
+        reminder.recurrence = payload.recurrence
+    if payload.recurrence_days is not None:
+        reminder.recurrence_days = payload.recurrence_days
+    if payload.recurrence_interval is not None:
+        reminder.recurrence_interval = payload.recurrence_interval
+    if payload.category_meta is not None:
+        reminder.category_meta = payload.category_meta
 
     db.commit()
     db.refresh(reminder)
