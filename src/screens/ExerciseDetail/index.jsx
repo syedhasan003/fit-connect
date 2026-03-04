@@ -239,13 +239,25 @@ export default function ExerciseDetail() {
               }}
             />
           ) : (
-            <div style={{
-              height: 220, display: "flex", alignItems: "center", justifyContent: "center",
-              flexDirection: "column", gap: 8,
-            }}>
-              <span style={{ fontSize: 48 }}>🏋️</span>
-              <p style={{ color: C.muted, fontSize: 13, margin: 0 }}>No preview available</p>
-            </div>
+            <a
+              href={ytSearchUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                height: 220, display: "flex", alignItems: "center", justifyContent: "center",
+                flexDirection: "column", gap: 10, textDecoration: "none",
+                background: "linear-gradient(135deg, rgba(255,0,0,0.06), rgba(99,102,241,0.06))",
+                cursor: "pointer",
+              }}
+            >
+              <span style={{ fontSize: 48 }}>🎥</span>
+              <p style={{ color: C.muted2, fontSize: 13, margin: 0, fontWeight: 600 }}>No image — tap to search on YouTube</p>
+              <span style={{
+                padding: "5px 14px", borderRadius: 20,
+                background: "rgba(255,0,0,0.15)", border: "1px solid rgba(255,0,0,0.3)",
+                fontSize: 12, color: "#ff6b6b", fontWeight: 700,
+              }}>▶ Watch on YouTube</span>
+            </a>
           )}
 
           {/* Gradient overlay at bottom */}
@@ -312,14 +324,21 @@ export default function ExerciseDetail() {
         <div style={{ marginBottom: 20 }}>
           {/* Section header with toggle */}
           <button
-            onClick={() => videoId && setShowVideo(v => !v)}
+            onClick={() => {
+              if (videoId) {
+                setShowVideo(v => !v);
+              } else if (!videoLoading) {
+                // No cached video — open YouTube search directly
+                window.open(ytSearchUrl, "_blank", "noopener,noreferrer");
+              }
+            }}
             style={{
               width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
               background: showVideo ? "rgba(255,0,0,0.08)" : C.surface,
               border: `1px solid ${showVideo ? "rgba(255,0,0,0.3)" : C.border}`,
               borderRadius: showVideo ? "14px 14px 0 0" : 14,
               padding: "12px 16px",
-              cursor: videoId ? "pointer" : "default",
+              cursor: videoLoading ? "default" : "pointer",
               transition: "all 0.2s",
             }}
           >
@@ -334,7 +353,7 @@ export default function ExerciseDetail() {
                     ? "Finding best tutorial…"
                     : videoId
                       ? showVideo ? "Tap to hide" : "YouTube tutorial • tap to watch"
-                      : "No video found for this exercise"}
+                      : "Search YouTube for tutorials →"}
                 </p>
               </div>
             </div>
@@ -347,8 +366,14 @@ export default function ExerciseDetail() {
                 animation: "spin 0.8s linear infinite",
               }} />
             )}
-            {videoId && !videoLoading && (
-              <span style={{ color: C.muted, fontSize: 14, transform: showVideo ? "rotate(180deg)" : "none", transition: "transform 0.25s" }}>▾</span>
+            {!videoLoading && (
+              <span style={{
+                color: C.muted, fontSize: 14,
+                transform: (videoId && showVideo) ? "rotate(180deg)" : "none",
+                transition: "transform 0.25s",
+              }}>
+                {videoId ? "▾" : "↗"}
+              </span>
             )}
           </button>
 

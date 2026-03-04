@@ -15,6 +15,7 @@ export default function Home() {
   const { logout } = useAuth();
   const [data, setData] = useState(null);
   const [reminderCount, setReminderCount] = useState(0);
+  const [todaysReminders, setTodaysReminders] = useState([]);
   const [error, setError] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [weekDays, setWeekDays] = useState([]);
@@ -47,10 +48,23 @@ export default function Home() {
       console.log('✅ Home data received:', homeData);
       setData(homeData);
 
-      // Load reminder count
+      // Load reminder count — show only today's active reminders
+      // Use activeOnly=true so the backend returns only is_active=True reminders
       try {
-        const reminderData = await fetchReminders();
-        setReminderCount(reminderData.length);
+        const reminderData = await fetchReminders({ activeOnly: true });
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+        const active = reminderData.filter(r => {
+          const scheduled = new Date(r.scheduled_at);
+          // Show only reminders due today (scheduled between midnight and 11:59pm)
+          return scheduled >= todayStart && scheduled <= todayEnd;
+        });
+        // Sort by time ascending
+        active.sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+        setTodaysReminders(active);
+        setReminderCount(active.length);
       } catch (reminderError) {
         console.warn('⚠️ Failed to load reminders:', reminderError);
       }
@@ -237,11 +251,12 @@ export default function Home() {
         {/* MORNING BRIEF — AI-generated daily brief card */}
         <MorningBriefCard brief={morningBrief} loading={briefLoading} onAskMore={() => navigate("/central")} />
 
-        {/* REMINDERS SUMMARY */}
+        {/* REMINDERS SUMMARY — today's active reminders only */}
         {reminderCount > 0 && (
           <>
-            <SectionHeader title="Reminders" />
+            <SectionHeader title="Today's Reminders" />
             <ReminderSummaryCard
+              reminders={todaysReminders}
               count={reminderCount}
               onClick={() => navigate("/reminders")}
             />
@@ -702,48 +717,77 @@ function BodyWeightCard({ weightHistory, showInput, draft, onDraftChange, onTogg
   );
 }
 
-function ReminderSummaryCard({ count, onClick }) {
+function ReminderSummaryCard({ reminders = [], count, onClick }) {
+  const now = new Date();
+  const overdue = reminders.filter(r => new Date(r.scheduled_at) < now);
+  const upcoming = reminders.filter(r => new Date(r.scheduled_at) >= now);
+
+  // Type icon map
+  const typeIcon = { workout: "🏋️", meal: "🥗", medication: "💊", checkup: "🩺", other: "🔔" };
+
   return (
     <div
       onClick={onClick}
       style={{
         borderRadius: 18,
-        padding: "20px",
-        background: "linear-gradient(135deg, rgba(17, 24, 39, 0.5), rgba(31, 41, 55, 0.3))",
+        padding: "18px 20px",
+        background: "linear-gradient(135deg, rgba(17, 24, 39, 0.6), rgba(31, 41, 55, 0.4))",
         backdropFilter: "blur(12px)",
-        border: "1px solid rgba(139, 92, 246, 0.2)",
+        border: overdue.length > 0
+          ? "1px solid rgba(239, 68, 68, 0.35)"
+          : "1px solid rgba(139, 92, 246, 0.25)",
         marginBottom: 16,
         cursor: "pointer",
         transition: "all 0.2s ease",
       }}
     >
-      <div style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-      }}>
-        <div>
-          <h3 style={{
-            margin: "0 0 6px",
-            fontSize: 17,
-            fontWeight: 600,
-          }}>
-            You have {count} active reminder{count !== 1 ? 's' : ''}
-          </h3>
-          <p style={{
-            margin: 0,
-            fontSize: 14,
-            color: "rgba(255,255,255,0.6)",
-          }}>
-            Tap to view all
+      {/* Header row */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 18 }}>🔔</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>
+            {count} reminder{count !== 1 ? "s" : ""} today
+          </span>
+          {overdue.length > 0 && (
+            <span style={{
+              fontSize: 11, fontWeight: 700, padding: "2px 8px",
+              borderRadius: 20, background: "rgba(239,68,68,0.2)",
+              color: "#f87171", border: "1px solid rgba(239,68,68,0.3)",
+            }}>
+              {overdue.length} overdue
+            </span>
+          )}
+        </div>
+        <span style={{ fontSize: 18, color: "#8b5cf6" }}>›</span>
+      </div>
+
+      {/* Preview: show up to 3 reminders */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {reminders.slice(0, 3).map((r, i) => {
+          const isOverdue = new Date(r.scheduled_at) < now;
+          const time = new Date(r.scheduled_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          return (
+            <div key={r.id || i} style={{
+              display: "flex", alignItems: "center", gap: 8,
+              padding: "6px 10px", borderRadius: 10,
+              background: isOverdue ? "rgba(239,68,68,0.08)" : "rgba(255,255,255,0.04)",
+              border: isOverdue ? "1px solid rgba(239,68,68,0.15)" : "1px solid rgba(255,255,255,0.06)",
+            }}>
+              <span style={{ fontSize: 14 }}>{typeIcon[r.type] || "🔔"}</span>
+              <span style={{ flex: 1, fontSize: 13, color: isOverdue ? "#fca5a5" : "rgba(255,255,255,0.8)", fontWeight: 500 }}>
+                {r.title || r.message || "Reminder"}
+              </span>
+              <span style={{ fontSize: 11, color: isOverdue ? "#f87171" : "rgba(255,255,255,0.4)", fontWeight: 600 }}>
+                {isOverdue ? "overdue" : time}
+              </span>
+            </div>
+          );
+        })}
+        {count > 3 && (
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: "rgba(255,255,255,0.4)", textAlign: "right" }}>
+            +{count - 3} more · tap to view all
           </p>
-        </div>
-        <div style={{
-          fontSize: 24,
-          color: "#8b5cf6",
-        }}>
-          →
-        </div>
+        )}
       </div>
     </div>
   );

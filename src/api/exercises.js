@@ -35,6 +35,46 @@ export async function fetchExercises(params = {}) {
 }
 
 /**
+ * Fetch ALL exercises for WorkoutBuilder — returns a nested map:
+ *   { "Chest": { "Upper Chest": ["Incline Barbell Press", ...], ... }, ... }
+ *
+ * Groups by body_part (→ muscle) and target (→ area).
+ * Falls back gracefully if the API fails.
+ */
+export async function fetchExercisesForBuilder() {
+  const cap = str => str
+    .split(" ")
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+
+  // Fetch in two batches to cover all 900+ exercises
+  const [batch1, batch2] = await Promise.all([
+    fetchExercises({ limit: 500, offset: 0 }),
+    fetchExercises({ limit: 500, offset: 500 }),
+  ]);
+  const all = [...(batch1.items || batch1), ...(batch2.items || batch2)];
+
+  const map = {};
+  all.forEach(ex => {
+    const muscle = cap(ex.body_part || ex.muscle_group || "Other");
+    const area   = cap(ex.target    || "General");
+    if (!map[muscle])       map[muscle]       = {};
+    if (!map[muscle][area]) map[muscle][area] = [];
+    // Avoid duplicates
+    if (!map[muscle][area].includes(ex.name)) {
+      map[muscle][area].push(ex.name);
+    }
+  });
+
+  // Sort exercise names within each area
+  Object.values(map).forEach(areas =>
+    Object.keys(areas).forEach(area => areas[area].sort())
+  );
+
+  return map;
+}
+
+/**
  * Fetch a single exercise by ID.
  */
 export async function fetchExerciseById(id) {

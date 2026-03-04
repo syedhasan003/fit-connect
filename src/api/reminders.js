@@ -12,9 +12,14 @@ function getAuthHeaders() {
 }
 
 // ✅ GET ALL REMINDERS
-export async function fetchReminders() {
+// opts: { activeOnly: bool, history: bool }
+export async function fetchReminders({ activeOnly = false, history = false } = {}) {
   try {
-    const response = await fetch(`${API_BASE}/reminders/`, {
+    const params = new URLSearchParams();
+    if (activeOnly) params.set('active_only', 'true');
+    if (history)    params.set('history', 'true');
+    const url = `${API_BASE}/reminders/${params.toString() ? '?' + params : ''}`;
+    const response = await fetch(url, {
       method: 'GET',
       headers: getAuthHeaders(),
     });
@@ -27,6 +32,22 @@ export async function fetchReminders() {
       throw new Error(`Failed to fetch reminders: ${response.statusText}`);
     }
 
+    return response.json();
+  } catch (error) {
+    console.error('Reminders API Error:', error);
+    throw error;
+  }
+}
+
+// ✅ GET REMINDER HISTORY (inactive / past reminders for History tab)
+export async function fetchReminderHistory(limit = 50) {
+  try {
+    const response = await fetch(`${API_BASE}/reminders/history?limit=${limit}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    if (response.status === 401) throw new Error('Authentication failed. Please log in again.');
+    if (!response.ok) throw new Error(`Failed to fetch reminder history: ${response.statusText}`);
     return response.json();
   } catch (error) {
     console.error('Reminders API Error:', error);

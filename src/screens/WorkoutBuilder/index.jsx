@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import EXERCISES from "./exercises.js";
+import EXERCISES_FALLBACK from "./exercises.js";              // kept as fallback only
+import { fetchExercisesForBuilder } from "../../api/exercises";
 import { createVaultItem, updateVaultItem } from "../../api/vault";
 import { setActiveWorkoutProgram } from "../../api/user";
 
@@ -13,19 +14,46 @@ export default function WorkoutBuilder() {
   const editingWorkout = location.state?.workoutData;
   const editingId = location.state?.workoutId;
 
+  // ── Restore in-progress draft from sessionStorage (not when editing a saved workout) ──
+  const _draft = (() => {
+    if (editingWorkout) return null;
+    try { return JSON.parse(sessionStorage.getItem("wb_draft") || "null"); } catch { return null; }
+  })();
+
   const [selectedDayCount, setSelectedDayCount] = useState(
-    editingWorkout ? editingWorkout.days.length : null
+    editingWorkout ? editingWorkout.days.length : (_draft?.selectedDayCount ?? null)
   );
   const [showDaySelector, setShowDaySelector] = useState(
-    !editingWorkout && !selectedDayCount
+    !editingWorkout && !(_draft?.days?.length > 0) && !(_draft?.selectedDayCount)
   );
 
-  const [workoutName, setWorkoutName] = useState(editingWorkout?.workoutName || "");
-  const [days, setDays] = useState(editingWorkout?.days || []);
+  const [workoutName, setWorkoutName] = useState(
+    editingWorkout?.workoutName || _draft?.workoutName || ""
+  );
+  const [days, setDays] = useState(editingWorkout?.days || _draft?.days || []);
   const [open, setOpen] = useState(null);
   const [saving, setSaving] = useState(false);
   const [settingActive, setSettingActive] = useState(false);
   const [savedWorkoutId, setSavedWorkoutId] = useState(editingId || null);
+  const [showSavePreview, setShowSavePreview] = useState(false);
+
+  // ── Exercise database: loaded from backend, fallback to local static data ──
+  const [EXERCISES, setEXERCISES] = useState(EXERCISES_FALLBACK);
+  const [exercisesReady, setExercisesReady] = useState(false);
+
+  useEffect(() => {
+    fetchExercisesForBuilder()
+      .then(map => {
+        if (map && Object.keys(map).length > 0) {
+          setEXERCISES(map);
+          console.log(`✅ WorkoutBuilder: loaded ${Object.keys(map).length} muscle groups from API`);
+        }
+      })
+      .catch(err => {
+        console.warn("⚠️ WorkoutBuilder: using local exercise fallback —", err.message);
+      })
+      .finally(() => setExercisesReady(true));
+  }, []);
 
   useEffect(() => {
     if (selectedDayCount && days.length === 0 && !editingWorkout) {
@@ -33,6 +61,14 @@ export default function WorkoutBuilder() {
       setDays(initialDays);
     }
   }, [selectedDayCount, days.length, editingWorkout]);
+
+  // ── Persist draft so navigating away (e.g. to exercise library) doesn't lose progress ──
+  useEffect(() => {
+    if (editingWorkout) return; // don't overwrite an edit-mode session
+    try {
+      sessionStorage.setItem("wb_draft", JSON.stringify({ days, workoutName, selectedDayCount }));
+    } catch { /* storage quota exceeded — silently ignore */ }
+  }, [days, workoutName, selectedDayCount, editingWorkout]);
 
   const handleDayCountSelect = (count) => {
     setSelectedDayCount(count);
@@ -185,14 +221,17 @@ export default function WorkoutBuilder() {
     ));
 
   // ── Save / activate ────────────────────────────────────────────────────────
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!workoutName.trim()) { alert("Please enter a workout name"); return; }
-
     const hasExercises = days.some(day =>
       day.muscles.some(muscle => muscle.areas.some(area => area.exercises && area.exercises.length > 0))
     );
     if (!hasExercises) { alert("Please add at least one exercise"); return; }
+    setShowSavePreview(true); // show preview modal, actual save on confirm
+  };
 
+  const doSave = async () => {
+    setShowSavePreview(false);
     setSaving(true);
     try {
       const totalMuscles = days.reduce((acc, d) => acc + d.muscles.length, 0);
@@ -214,11 +253,13 @@ export default function WorkoutBuilder() {
       if (editingId || savedWorkoutId) {
         workoutId = editingId || savedWorkoutId;
         await updateVaultItem(workoutId, workoutData);
+        sessionStorage.removeItem("wb_draft");
         alert("Workout updated successfully!");
       } else {
         const response = await createVaultItem(workoutData);
         workoutId = response.id;
         setSavedWorkoutId(workoutId);
+        sessionStorage.removeItem("wb_draft");
         alert("Workout saved to Vault!");
       }
       return workoutId;
@@ -235,7 +276,7 @@ export default function WorkoutBuilder() {
     try {
       let workoutId = savedWorkoutId || editingId;
       if (!workoutId) {
-        workoutId = await handleSave();
+        workoutId = await doSave();
         if (!workoutId) { setSettingActive(false); return; }
       }
       await setActiveWorkoutProgram(workoutId);
@@ -254,11 +295,11 @@ export default function WorkoutBuilder() {
     if (open.startsWith("muscle-")) return Object.keys(EXERCISES);
     if (open.startsWith("area-")) {
       const muscleName = days[parseInt(parts[1])].muscles[parseInt(parts[2])].name;
-      return Object.keys(EXERCISES[muscleName]);
+      return Object.keys(EXERCISES[muscleName] || {});
     }
     if (open.startsWith("ex-")) {
       const muscle = days[parseInt(parts[1])].muscles[parseInt(parts[2])];
-      return EXERCISES[muscle.name][muscle.areas[parseInt(parts[3])].name];
+      return EXERCISES[muscle.name]?.[muscle.areas[parseInt(parts[3])].name] || [];
     }
     return [];
   };
@@ -371,12 +412,28 @@ export default function WorkoutBuilder() {
           boxShadow: "0 8px 32px rgba(139,92,246,0.4)",
           display: "flex", alignItems: "center", gap: 8, opacity: saving ? 0.7 : 1,
         }}>
-          {saving ? "Saving..." : (editingId ? "Update Workout" : "Save to Vault")}
+          {saving ? "Saving..." : (editingId ? "Preview & Update" : "Preview & Save")}
         </button>
       </div>
 
+      {showSavePreview && (
+        <SavePreviewModal
+          workoutName={workoutName}
+          days={days}
+          isEditing={!!(editingId || savedWorkoutId)}
+          saving={saving}
+          onConfirm={doSave}
+          onCancel={() => setShowSavePreview(false)}
+        />
+      )}
+
       {open && (
-        <Selector items={getSelectorItems()} onSelect={handleSelectorSelect} onClose={() => setOpen(null)} />
+        <Selector
+          items={getSelectorItems()}
+          loading={!exercisesReady}
+          onSelect={handleSelectorSelect}
+          onClose={() => setOpen(null)}
+        />
       )}
 
       <style>{`
@@ -723,12 +780,17 @@ function SmallButton({ onClick, text, color, ghost }) {
   );
 }
 
-function Selector({ items, onSelect, onClose }) {
+function Selector({ items, loading, onSelect, onClose }) {
   const contentRef = useRef(null);
+  const [search, setSearch] = useState("");
   useEffect(() => {
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = "unset"; };
   }, []);
+
+  const filtered = search.trim()
+    ? items.filter(item => item.toLowerCase().includes(search.toLowerCase()))
+    : items;
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", flexDirection: "column" }}>
@@ -742,12 +804,34 @@ function Selector({ items, onSelect, onClose }) {
         <div style={{ padding: "16px 0 12px", display: "flex", justifyContent: "center" }}>
           <div style={{ width: 40, height: 4, background: "rgba(255,255,255,0.3)", borderRadius: 2 }} />
         </div>
-        <h3 style={{ margin: "0 0 16px", padding: "0 24px", fontSize: 18, fontWeight: 600, textAlign: "center", color: "#fff" }}>
-          Select Option
+        <h3 style={{ margin: "0 0 12px", padding: "0 24px", fontSize: 18, fontWeight: 600, textAlign: "center", color: "#fff" }}>
+          Select Option {loading && <span style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", fontWeight: 400 }}>loading…</span>}
         </h3>
+        {/* Search box — only show when there are 8+ items */}
+        {items.length >= 8 && (
+          <div style={{ padding: "0 20px 12px" }}>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search…"
+              autoFocus
+              style={{
+                width: "100%", boxSizing: "border-box",
+                padding: "10px 14px", borderRadius: 12, border: "1px solid rgba(139,92,246,0.3)",
+                background: "rgba(255,255,255,0.07)", color: "#fff", fontSize: 15,
+                outline: "none",
+              }}
+            />
+          </div>
+        )}
         <div ref={contentRef} style={{ flex: 1, overflowY: "auto", padding: "0 20px 40px" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {items.map((item, i) => (
+            {filtered.length === 0 && !loading && (
+              <p style={{ textAlign: "center", color: "rgba(255,255,255,0.4)", padding: 20 }}>
+                No results for "{search}"
+              </p>
+            )}
+            {filtered.map((item, i) => (
               <button key={i} onClick={() => onSelect(item)} style={{
                 padding: "18px 20px", borderRadius: 14, border: "none",
                 background: "rgba(255,255,255,0.06)", color: "#fff",
@@ -757,6 +841,117 @@ function Selector({ items, onSelect, onClose }) {
               </button>
             ))}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Save Preview Modal ────────────────────────────────────────────────────────
+function SavePreviewModal({ workoutName, days, isEditing, saving, onConfirm, onCancel }) {
+  const totalExercises = days.reduce((acc, day) =>
+    acc + day.muscles.reduce((mAcc, muscle) =>
+      mAcc + muscle.areas.reduce((aAcc, area) => aAcc + (area.exercises?.length || 0), 0), 0
+    ), 0
+  );
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 20px" }}>
+      {/* Backdrop */}
+      <div onClick={onCancel} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.78)", backdropFilter: "blur(10px)" }} />
+
+      {/* Modal */}
+      <div style={{
+        position: "relative", width: "100%", maxWidth: 480,
+        maxHeight: "82vh", overflow: "hidden",
+        borderRadius: 24,
+        background: "linear-gradient(135deg, rgb(17,24,39), rgb(20,20,36))",
+        border: "1px solid rgba(139,92,246,0.3)",
+        display: "flex", flexDirection: "column",
+        boxShadow: "0 24px 80px rgba(0,0,0,0.6)",
+      }}>
+        {/* Header */}
+        <div style={{ padding: "24px 24px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <p style={{ margin: "0 0 4px", fontSize: 12, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: 1, fontWeight: 600 }}>
+            Workout Summary
+          </p>
+          <h2 style={{
+            margin: "0 0 8px", fontSize: 22, fontWeight: 700,
+            background: "linear-gradient(135deg, #a78bfa, #818cf8)",
+            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
+          }}>
+            {workoutName}
+          </h2>
+          <div style={{ display: "flex", gap: 12, fontSize: 13, color: "rgba(255,255,255,0.5)" }}>
+            <span>📅 {days.length} day{days.length !== 1 ? "s" : ""}</span>
+            <span>🏋️ {totalExercises} exercise{totalExercises !== 1 ? "s" : ""}</span>
+          </div>
+        </div>
+
+        {/* Day breakdown */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 24px" }}>
+          {days.map((day, i) => {
+            const dayExCount = day.muscles.reduce((acc, m) =>
+              acc + m.areas.reduce((a, ar) => a + (ar.exercises?.length || 0), 0), 0
+            );
+            const muscleNames = day.muscles.map(m => m.name);
+            return (
+              <div key={i} style={{
+                marginBottom: 12, padding: "14px 16px", borderRadius: 16,
+                background: "rgba(139,92,246,0.07)", border: "1px solid rgba(139,92,246,0.15)",
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#a78bfa" }}>
+                    Day {i + 1}{day.name ? ` · ${day.name}` : ""}
+                  </p>
+                  <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.45)", fontWeight: 600 }}>
+                    {dayExCount} exercise{dayExCount !== 1 ? "s" : ""}
+                  </p>
+                </div>
+                {muscleNames.length > 0 ? (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {muscleNames.map((name, mi) => (
+                      <span key={mi} style={{
+                        padding: "3px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600,
+                        background: "rgba(139,92,246,0.15)", color: "#c4b5fd",
+                      }}>
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.3)" }}>No muscle groups added</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Actions */}
+        <div style={{ padding: "16px 24px 28px", display: "flex", gap: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <button
+            onClick={onCancel}
+            style={{
+              flex: 1, padding: "14px", borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.12)", background: "transparent",
+              color: "rgba(255,255,255,0.7)", fontSize: 15, fontWeight: 600, cursor: "pointer",
+            }}
+          >
+            ← Edit
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={saving}
+            style={{
+              flex: 2, padding: "14px", borderRadius: 14, border: "none",
+              background: saving ? "rgba(139,92,246,0.5)" : "linear-gradient(135deg, #8b5cf6, #6366f1)",
+              color: "#fff", fontSize: 15, fontWeight: 700,
+              cursor: saving ? "default" : "pointer", opacity: saving ? 0.7 : 1,
+              boxShadow: saving ? "none" : "0 8px 24px rgba(139,92,246,0.35)",
+            }}
+          >
+            {saving ? "Saving…" : (isEditing ? "Confirm Update" : "Save to Vault ✓")}
+          </button>
         </div>
       </div>
     </div>

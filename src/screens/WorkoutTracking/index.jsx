@@ -544,7 +544,7 @@ export default function WorkoutTracking() {
       setLoading(true); setError(null);
       let nextDay;
       try { nextDay = await getNextWorkoutDay(); }
-      catch { setError('No active workout program. Set one as active in the Vault first.'); return; }
+      catch { setError('No active workout program. Build a workout in the Workout Builder and tap "Set as Active Program" to get started.'); return; }
 
       nextDayRef.current = nextDay;
 
@@ -690,14 +690,35 @@ export default function WorkoutTracking() {
     </div>
   );
 
-  if (error) return (
-    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16, textAlign: 'center' }}>
-      <p style={{ color: C.text, fontSize: 17, fontWeight: 600, maxWidth: 300, lineHeight: 1.5 }}>{error}</p>
-      <button onClick={() => navigate('/')} style={{ padding: '14px 36px', background: C.accent, border: 'none', borderRadius: 100, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
-        Go Home
-      </button>
-    </div>
-  );
+  if (error) {
+    const noProgram = error.includes("No active workout program");
+    return (
+      <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16, textAlign: 'center' }}>
+        <div style={{ fontSize: 48, marginBottom: 8 }}>{noProgram ? "🏋️" : "⚠️"}</div>
+        <p style={{ color: C.text, fontSize: 17, fontWeight: 600, maxWidth: 300, lineHeight: 1.6 }}>{error}</p>
+        {noProgram ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', maxWidth: 280 }}>
+            <button
+              onClick={() => navigate('/workout-builder')}
+              style={{ padding: '14px 36px', background: C.accent, border: 'none', borderRadius: 100, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}
+            >
+              Open Workout Builder
+            </button>
+            <button
+              onClick={() => navigate('/')}
+              style={{ padding: '12px 36px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 100, color: C.muted2, fontSize: 15, cursor: 'pointer' }}
+            >
+              Go Home
+            </button>
+          </div>
+        ) : (
+          <button onClick={() => navigate('/')} style={{ padding: '14px 36px', background: C.accent, border: 'none', borderRadius: 100, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+            Go Home
+          </button>
+        )}
+      </div>
+    );
+  }
 
   if (restDay) return (
     <RestDayScreen programName={restDayInfo?.program_name} onGoHome={() => navigate('/')} />

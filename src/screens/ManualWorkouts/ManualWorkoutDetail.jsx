@@ -56,7 +56,8 @@ export default function ManualWorkoutDetail() {
   };
 
   const handleStartWorkout = () => {
-    navigate("/workout-tracking");
+    // Pass the vault item ID so WorkoutTracking can reference the correct program
+    navigate("/workout-tracking", { state: { vaultId: id } });
   };
 
   const handleSetAsActive = async () => {

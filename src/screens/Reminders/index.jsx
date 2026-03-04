@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import BottomNav from "../../components/navigation/BottomNav";
 import {
   fetchReminders,
+  fetchReminderHistory,
   acknowledgeReminder,
   markReminderMissed,
   deleteReminder,
@@ -55,29 +56,51 @@ function getRecurrenceLabel(reminder) {
 
 export default function Reminders() {
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState("active"); // "active" | "history"
   const [reminders, setReminders] = useState([]);
+  const [history, setHistory] = useState([]);
   const [medSchedules, setMedSchedules] = useState([]);
   const [medLogs, setMedLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   useEffect(() => {
     loadAll();
   }, []);
 
+  // Load history tab lazily the first time user opens it
+  useEffect(() => {
+    if (activeTab === "history" && history.length === 0) {
+      loadHistory();
+    }
+  }, [activeTab]);
+
   const loadAll = async () => {
     try {
       const [remData, schedData, logsData] = await Promise.all([
-        fetchReminders(),
+        fetchReminders({ activeOnly: true }),   // ← only active reminders
         fetchMedicationSchedules().catch(() => []),
         fetchTodaysMedicationLogs().catch(() => []),
       ]);
-      setReminders(remData.filter((r) => r.is_active));
+      setReminders(remData); // already filtered server-side
       setMedSchedules(schedData);
       setMedLogs(logsData);
     } catch (error) {
       console.error("Failed to load reminders:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const data = await fetchReminderHistory(100);
+      setHistory(data);
+    } catch (error) {
+      console.error("Failed to load reminder history:", error);
+    } finally {
+      setHistoryLoading(false);
     }
   };
 
@@ -180,7 +203,104 @@ export default function Reminders() {
         </button>
       </div>
 
+      {/* ── ACTIVE / HISTORY TABS ── */}
+      <div style={{ padding: "0 20px 16px", display: "flex", gap: 8 }}>
+        {[
+          { key: "active", label: "Active", count: reminders.length },
+          { key: "history", label: "History", count: null },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              flex: 1, padding: "10px 0", borderRadius: 12, border: "none",
+              fontWeight: 600, fontSize: 14, cursor: "pointer",
+              background: activeTab === tab.key
+                ? "linear-gradient(135deg, #8b5cf6, #6366f1)"
+                : "rgba(255,255,255,0.06)",
+              color: activeTab === tab.key ? "#fff" : "rgba(255,255,255,0.5)",
+              transition: "all 0.2s ease",
+            }}
+          >
+            {tab.label}
+            {tab.count !== null && tab.count > 0 && (
+              <span style={{
+                marginLeft: 6, fontSize: 11, padding: "1px 6px",
+                borderRadius: 10,
+                background: activeTab === tab.key ? "rgba(255,255,255,0.25)" : "rgba(139,92,246,0.3)",
+                color: "#fff",
+              }}>{tab.count}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
       <div style={{ padding: "0 20px" }}>
+
+        {/* ── HISTORY TAB ── */}
+        {activeTab === "history" && (
+          <div>
+            {historyLoading ? (
+              <div style={{ textAlign: "center", padding: 40, color: "rgba(255,255,255,0.4)" }}>
+                Loading history…
+              </div>
+            ) : history.length === 0 ? (
+              <div style={{
+                textAlign: "center", padding: 40,
+                color: "rgba(255,255,255,0.35)", fontSize: 14,
+              }}>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>📋</div>
+                No reminder history yet
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {history.map(r => {
+                  const cat = getCategoryInfo(r.type);
+                  const date = new Date(r.scheduled_at).toLocaleDateString([], {
+                    weekday: "short", month: "short", day: "numeric",
+                  });
+                  const time = new Date(r.scheduled_at).toLocaleTimeString([], {
+                    hour: "2-digit", minute: "2-digit",
+                  });
+                  const done = r.status === "completed";
+                  return (
+                    <div key={r.id} style={{
+                      padding: "14px 16px", borderRadius: 14,
+                      background: "rgba(255,255,255,0.04)",
+                      border: done
+                        ? "1px solid rgba(16,185,129,0.2)"
+                        : "1px solid rgba(239,68,68,0.2)",
+                      display: "flex", alignItems: "center", gap: 12,
+                    }}>
+                      <span style={{ fontSize: 22 }}>{cat.emoji}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: "#fff",
+                          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {r.title || r.message || "Reminder"}
+                        </div>
+                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>
+                          {date} · {time}
+                        </div>
+                      </div>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 20,
+                        background: done ? "rgba(16,185,129,0.15)" : "rgba(239,68,68,0.15)",
+                        color: done ? "#34d399" : "#f87171",
+                        border: done ? "1px solid rgba(16,185,129,0.3)" : "1px solid rgba(239,68,68,0.3)",
+                        whiteSpace: "nowrap",
+                      }}>
+                        {done ? "✓ Done" : "✗ Missed"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── ACTIVE TAB ── */}
+        {activeTab === "active" && <>
 
         {/* ── MEDICATION BANNER ── */}
         {medSchedules.length > 0 && (
@@ -320,6 +440,8 @@ export default function Reminders() {
             </button>
           </div>
         )}
+
+        </> /* end activeTab === "active" */}
 
       </div>
 
