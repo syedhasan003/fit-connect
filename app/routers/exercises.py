@@ -2,9 +2,11 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from typing import Optional
+import asyncio
 import json
 import os
 import logging
+from datetime import date
 
 import httpx
 
@@ -15,6 +17,34 @@ from app.models.exercise import Exercise
 logger = logging.getLogger(__name__)
 
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
+
+# ── YouTube rate limiter ───────────────────────────────────────────────────────
+# Free quota: 10,000 units/day.  Each search costs 100 units.
+# We cap at 85 searches/day (8,500 units) — leaves buffer for spikes / manual queries.
+_YT_MAX_SEARCHES_PER_DAY = int(os.getenv("YT_DAILY_SEARCH_LIMIT", "85"))
+_yt_semaphore   = asyncio.Semaphore(3)   # max 3 concurrent YouTube API calls
+_yt_quota_lock  = asyncio.Lock()
+_yt_quota_date: Optional[date] = None
+_yt_quota_used  = 0                      # searches consumed today
+
+
+async def _yt_quota_ok() -> bool:
+    """Return True if we still have quota remaining today."""
+    global _yt_quota_date, _yt_quota_used
+    today = date.today()
+    async with _yt_quota_lock:
+        if _yt_quota_date != today:
+            _yt_quota_date = today
+            _yt_quota_used = 0
+        return _yt_quota_used < _YT_MAX_SEARCHES_PER_DAY
+
+
+async def _yt_consume_quota():
+    """Increment the daily search counter (call after a successful API request)."""
+    global _yt_quota_used
+    async with _yt_quota_lock:
+        _yt_quota_used += 1
+        logger.debug(f"[YouTube] quota used today: {_yt_quota_used}/{_YT_MAX_SEARCHES_PER_DAY}")
 
 router = APIRouter(prefix="/api/exercises", tags=["Exercises"])
 
@@ -163,25 +193,36 @@ async def get_exercise_video(
         logger.warning("[YouTube] YOUTUBE_API_KEY not set — skipping video fetch")
         return {"video_id": None, "cached": False}
 
-    # ── 3. Search YouTube Data API v3 ────────────────────────────────────────
+    # ── 3a. Daily quota guard ─────────────────────────────────────────────────
+    if not await _yt_quota_ok():
+        logger.warning(
+            f"[YouTube] Daily quota limit ({_YT_MAX_SEARCHES_PER_DAY} searches) reached "
+            f"— returning null for '{exercise.name}'"
+        )
+        return {"video_id": None, "cached": False, "quota_exceeded": True}
+
+    # ── 3b. Concurrency guard + API call ─────────────────────────────────────
+    # Semaphore ensures at most 3 concurrent YouTube calls regardless of traffic.
     query   = f"{exercise.name} proper form technique tutorial"
     api_url = "https://www.googleapis.com/youtube/v3/search"
     params  = {
-        "part":             "snippet",
-        "q":                query,
-        "type":             "video",
-        "maxResults":       5,
-        "videoDuration":    "medium",      # 4–20 min — proper tutorials
+        "part":              "snippet",
+        "q":                 query,
+        "type":              "video",
+        "maxResults":        5,
+        "videoDuration":     "medium",    # 4–20 min — proper tutorials
         "relevanceLanguage": "en",
-        "safeSearch":       "strict",
-        "key":              YOUTUBE_API_KEY,
+        "safeSearch":        "strict",
+        "key":               YOUTUBE_API_KEY,
     }
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(api_url, params=params)
-            resp.raise_for_status()
-            data = resp.json()
+        async with _yt_semaphore:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(api_url, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+            await _yt_consume_quota()
 
         items = data.get("items", [])
         if not items:
@@ -200,7 +241,7 @@ async def get_exercise_video(
         if not video_id:
             video_id = items[0]["id"]["videoId"]
 
-        # ── 4. Cache in DB ────────────────────────────────────────────────────
+        # ── 4. Cache in DB — permanent, no re-fetch ever ─────────────────────
         exercise.youtube_video_id = video_id
         db.commit()
         logger.info(f"[YouTube] Cached video {video_id} for '{exercise.name}'")
@@ -209,9 +250,12 @@ async def get_exercise_video(
 
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 403:
-            logger.warning("[YouTube] Quota exceeded or API key invalid")
+            logger.warning("[YouTube] Quota exceeded or API key invalid (HTTP 403)")
         else:
             logger.error(f"[YouTube] API error: {e}")
+        return {"video_id": None, "cached": False}
+    except asyncio.TimeoutError:
+        logger.warning(f"[YouTube] Timeout fetching video for '{exercise.name}'")
         return {"video_id": None, "cached": False}
     except Exception as e:
         logger.error(f"[YouTube] Unexpected error: {e}")

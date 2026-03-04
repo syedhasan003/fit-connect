@@ -76,23 +76,31 @@ NEURAL2_VOICES: dict[str, str] = {
 DEFAULT_VOICE = NEURAL2_VOICES.get(TTS_LANGUAGE, "en-US-Neural2-C")
 
 # Languages Chirp 2 supports for auto-detection in streaming/sync mode.
-# Passing multiple codes enables automatic language identification.
+# IMPORTANT: These must be BCP-47 codes that Chirp 2 actually supports.
+# ar-XA  is a TTS voice code only — Chirp 2 needs ar-EG for Arabic.
+# cmn-CN is legacy pinyin notation — Chirp 2 needs zh-Hans-CN.
 STT_LANGUAGES = [
+    # English variants
     "en-US", "en-GB", "en-IN", "en-AU",
-    "hi-IN",
-    "ar-XA",
+    # Hindi + major Indian languages (India-first market)
+    "hi-IN", "mr-IN", "ta-IN", "te-IN", "bn-BD",
+    "gu-IN", "pa-IN", "kn-IN", "ml-IN", "ur-IN",
+    # Arabic (Egyptian — Chirp 2 supported code, NOT ar-XA)
+    "ar-EG",
+    # European
     "fr-FR", "fr-CA",
     "es-ES", "es-US",
     "de-DE",
     "it-IT",
     "pt-BR",
-    "ja-JP",
-    "ko-KR",
-    "cmn-CN",
-    "ru-RU",
-    "tr-TR",
     "nl-NL",
     "pl-PL",
+    "ru-RU",
+    "tr-TR",
+    # East Asian
+    "ja-JP",
+    "ko-KR",
+    "zh-Hans-CN",   # Mandarin (Simplified) — was cmn-CN
 ]
 
 # File-size cap: Google STT v2 inline audio limit is 10 MB

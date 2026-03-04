@@ -280,10 +280,9 @@ async def run_weekly_adaptation():
                 try:
                     client = _get_openai_client()
                     resp = client.chat.completions.create(
-                        model="gpt-4o-mini",
+                        model="gpt-5-nano",
                         messages=[{"role": "user", "content": prompt}],
-                        temperature=0.5,
-                        max_tokens=500,
+                        max_completion_tokens=500,
                     )
                     adaptation_text = resp.choices[0].message.content.strip()
                 except Exception as ai_err:

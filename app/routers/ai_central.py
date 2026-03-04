@@ -27,12 +27,15 @@ from app.db.database import get_db
 from app.deps import get_current_user
 from app.models.health_memory import HealthMemory
 from app.models.fitness_tracking import (
-    WorkoutSession, SessionStatus, MealLog, BodyWeightLog, WaterLog
+    WorkoutSession, SessionStatus, MealLog, BodyWeightLog, WaterLog, DietPlan,
 )
 from app.models.user import User
 from app.services.memory_writer import get_disliked_items, write_disliked_item
 from app.services.preference_manager import (
     get_preferences, save_preferences, clear_preferences, get_questions,
+)
+from app.services.body_composition_service import (
+    compute_body_composition, activity_level_from_prefs, goal_from_prefs,
 )
 
 logger = logging.getLogger(__name__)
@@ -91,6 +94,8 @@ _INTENT_PATTERNS = {
         r"training.*routine", r"design.*workout", r"new.*routine",
         r"what.*exercises", r"which.*exercises", r"leg.*day", r"chest.*day",
         r"push.*day", r"pull.*day", r"upper.*body", r"lower.*body",
+        r"arm.*day", r"back.*day", r"shoulder.*day", r"ab.*workout", r"core.*workout",
+        r"cardio.*plan", r"hiit.*plan", r"strength.*program",
     ],
     "meal": [
         r"meal.*plan", r"diet.*plan", r"food.*plan", r"create.*diet",
@@ -98,20 +103,25 @@ _INTENT_PATTERNS = {
         r"eating.*plan", r"generate.*meal", r"make.*meal.*plan",
         r"meal.*schedule", r"what.*eat", r"food.*today", r"breakfast.*lunch.*dinner",
         r"calorie.*target", r"macro.*target",
+        r"how many calories", r"protein.*goal", r"what.*protein", r"bulking.*diet",
+        r"cutting.*diet", r"deficit.*calories", r"surplus.*calories",
+        r"cheat.*meal", r"refeed", r"intermittent.*fasting",
     ],
     "motivate": [
         r"motivat", r"hype me", r"inspire me", r"i need.*push",
         r"feeling.*lazy", r"don.*want.*workout", r"keep.*going",
         r"encourage", r"pump me up", r"need.*motivation",
         r"struggling", r"want to quit", r"hard.*today", r"not feeling it",
-        r"burnout", r"demotivat",
+        r"burnout", r"demotivat", r"no energy", r"feel like giving up",
+        r"lost.*motivation", r"can.*t be bothered", r"skip.*today",
     ],
     "progress": [
         r"analyz.*progress", r"my progress", r"how.*i.*doing", r"progress.*report",
         r"weekly.*summary", r"show.*stats", r"how.*been.*doing",
         r"progress.*check", r"fitness.*summary", r"my.*stats",
         r"am i improving", r"have i improved", r"results", r"how.*performing",
-        r"plateau", r"stuck",
+        r"plateau", r"stuck", r"track.*record", r"trend", r"summary.*week",
+        r"look back", r"review.*week", r"how.*training.*going",
     ],
     "reminder": [
         r"set.*reminder", r"remind me", r"create.*reminder",
@@ -127,31 +137,95 @@ _INTENT_PATTERNS = {
         r"medication.*schedule", r"my.*pills", r"medicine.*reminder",
         r"check.*medication", r"medication.*log",
     ],
+    # ── New intents ───────────────────────────────────────────────────────────
+    "recovery": [
+        r"sore", r"soreness", r"doms", r"recovery", r"rest.*day",
+        r"muscle.*tight", r"stiff", r"fatigue", r"overtrain",
+        r"sleep.*bad", r"didn.*sleep", r"exhausted", r"need.*rest",
+        r"injury", r"pain.*muscle", r"foam.*roll", r"stretch",
+        r"active.*recovery", r"deload", r"how.*recover",
+    ],
+    "celebration": [
+        r"hit.*pr", r"new.*pr", r"personal.*record", r"pb\b", r"personal.*best",
+        r"pr today", r"i.*lifted", r"i.*beat", r"nailed.*it",
+        r"crushed.*workout", r"best.*session", r"finally.*achieved",
+        r"reached.*goal", r"lost.*kg", r"gained.*kg",
+        r"smashed", r"killed.*it", r"proud",
+    ],
+    "check_in": [
+        r"^how.*am i\?*$", r"^check in", r"^daily check",
+        r"^what.*should.*focus", r"^what.*do today",
+        r"where.*am i", r"^update me", r"^brief me",
+        r"^how.*looking", r"^what.*next",
+    ],
 }
 
 # ── Agent routing table: intent → specialist persona label ────────────────────
 _INTENT_AGENT = {
-    "workout":    "🏋️ Personal Trainer",
-    "meal":       "🥗 Sports Dietician",
-    "motivate":   "🧠 Mindset Coach",
-    "progress":   "📊 Performance Analyst",
-    "reminder":   "⏰ Routine Manager",
-    "medication": "💊 Health Monitor",
-    "general":    "🤖 Central AI",
+    "workout":     "🏋️ Personal Trainer",
+    "meal":        "🥗 Sports Dietician",
+    "motivate":    "🧠 Mindset Coach",
+    "progress":    "📊 Performance Analyst",
+    "reminder":    "⏰ Routine Manager",
+    "medication":  "💊 Health Monitor",
+    "recovery":    "🔄 Recovery Specialist",
+    "celebration": "🏆 Performance Coach",
+    "check_in":    "🤖 Central AI",
+    "general":     "🤖 Central AI",
 }
+
+# Minimum word count below which we try the LLM fallback classifier
+_SEMANTIC_FALLBACK_THRESHOLD = 4
+
 
 def detect_intent(text: str) -> str:
     """
-    Fast keyword-based intent detection.
-    Handles the vast majority of clear requests in <1ms with zero API cost.
-    Ambiguous short messages fall through to 'general' (handled by GPT context).
+    Two-stage intent detection:
+    1. Fast regex (< 1ms, zero cost) — handles explicit, keyword-rich messages.
+    2. Synchronous LLM fallback for short/ambiguous messages (< 4 words, no regex hit).
+       Returns a single intent word from the known set.
     """
     t = text.lower().strip()
     for intent, patterns in _INTENT_PATTERNS.items():
         for pat in patterns:
             if re.search(pat, t):
                 return intent
+
+    # Short message with no regex match → ask the model to classify
+    word_count = len(t.split())
+    if word_count < _SEMANTIC_FALLBACK_THRESHOLD:
+        return _classify_intent_llm(text)
+
     return "general"
+
+
+def _classify_intent_llm(text: str) -> str:
+    """
+    Lightweight synchronous LLM call to classify short/ambiguous messages.
+    Uses gpt-5-nano with a tight prompt — typically under 200ms.
+    Falls back to 'general' on any error.
+    """
+    valid_intents = list(_INTENT_AGENT.keys())
+    prompt = (
+        f"Classify this fitness app message into exactly one of these intents: "
+        f"{', '.join(valid_intents)}\n\n"
+        f"Message: \"{text}\"\n\n"
+        f"Reply with ONLY the intent word. No punctuation, no explanation."
+    )
+    try:
+        from openai import OpenAI
+        import os
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        resp = client.chat.completions.create(
+            model="gpt-5-nano",
+            messages=[{"role": "user", "content": prompt}],
+            max_completion_tokens=10,
+        )
+        result = resp.choices[0].message.content.strip().lower()
+        return result if result in valid_intents else "general"
+    except Exception as e:
+        logger.debug(f"[Intent LLM fallback] {e}")
+        return "general"
 
 
 # ─────────────────────────────────────────────────────────────
@@ -164,54 +238,48 @@ def build_rich_context(db: Session, user: User) -> dict:
     week_ago = now - timedelta(days=7)
     three_days_ago = now - timedelta(days=3)
 
-    # Layer 1–6 context — ordered by signal quality (highest first)
     ctx = {
         "user_name": getattr(user, "full_name", None) or getattr(user, "name", "User"),
-        "daily_narratives": [],      # Layer 1 — synthesised daily summaries (best signal)
-        "morning_brief": None,       # Layer 2 — today's AI brief
-        "weekly_adaptation": None,   # Layer 5 — latest adaptation report
-        "correlation_insights": [],  # Layer 4 — data-driven patterns
-        "recent_workouts": [],       # Raw — last 7 days
-        "recent_meals": [],          # Raw — last 3 days
-        "weight_history": [],        # Raw — last 14 entries
+        # ── Agent-synthesised layers (highest signal) ─────────
+        "daily_narratives": [],
+        "morning_brief": None,
+        "weekly_adaptation": None,
+        "correlation_insights": [],
+        "ai_recommendations": [],    # NEW — past AI suggestions (last 3)
+        # ── User profile & body composition ───────────────────
+        "health_profile": None,      # NEW — medical conditions
+        "body_composition": None,    # NEW — TDEE, BF%, lean mass, calorie target
+        "diet_targets": None,        # NEW — active diet plan targets
+        "active_program": None,      # NEW — active workout program name & schedule
+        # ── Raw data ──────────────────────────────────────────
+        "recent_workouts": [],
+        "recent_meals": [],
+        "weight_history": [],
         "water_today": None,
-        "health_memories": [],       # Raw events (supplementary, non-agent)
+        "health_memories": [],
         "disliked_items": {"exercises": [], "foods": []},
     }
 
-    # ── Layer 1: Daily narratives (last 7 days) ───────────────────────────────
+    # ── Layer 1: Daily narratives ─────────────────────────────────────────────
     try:
         narratives = (
             db.query(HealthMemory)
-            .filter(
-                HealthMemory.user_id == user.id,
-                HealthMemory.category == "daily_narrative",
-            )
-            .order_by(HealthMemory.created_at.desc())
-            .limit(7)
-            .all()
+            .filter(HealthMemory.user_id == user.id, HealthMemory.category == "daily_narrative")
+            .order_by(HealthMemory.created_at.desc()).limit(7).all()
         )
         ctx["daily_narratives"] = [
-            {
-                "date": m.content.get("date", "?"),
-                "summary": m.content.get("narrative", ""),
-            }
-            for m in reversed(narratives)  # chronological order
-            if m.content.get("narrative")
+            {"date": m.content.get("date", "?"), "summary": m.content.get("narrative", "")}
+            for m in reversed(narratives) if m.content.get("narrative")
         ]
     except Exception as e:
         logger.debug(f"[Context] narratives: {e}")
 
-    # ── Layer 2: Today's morning brief ───────────────────────────────────────
+    # ── Layer 2: Morning brief ────────────────────────────────────────────────
     try:
         brief = (
             db.query(HealthMemory)
-            .filter(
-                HealthMemory.user_id == user.id,
-                HealthMemory.category == "morning_brief",
-            )
-            .order_by(HealthMemory.created_at.desc())
-            .first()
+            .filter(HealthMemory.user_id == user.id, HealthMemory.category == "morning_brief")
+            .order_by(HealthMemory.created_at.desc()).first()
         )
         if brief and brief.content.get("brief"):
             ctx["morning_brief"] = {
@@ -222,16 +290,12 @@ def build_rich_context(db: Session, user: User) -> dict:
     except Exception as e:
         logger.debug(f"[Context] morning_brief: {e}")
 
-    # ── Layer 4: Correlation insights ────────────────────────────────────────
+    # ── Layer 4: Correlation insights ─────────────────────────────────────────
     try:
         corr = (
             db.query(HealthMemory)
-            .filter(
-                HealthMemory.user_id == user.id,
-                HealthMemory.category == "correlation_insight",
-            )
-            .order_by(HealthMemory.created_at.desc())
-            .first()
+            .filter(HealthMemory.user_id == user.id, HealthMemory.category == "correlation_insight")
+            .order_by(HealthMemory.created_at.desc()).first()
         )
         if corr and corr.content.get("insights"):
             ctx["correlation_insights"] = [
@@ -244,12 +308,8 @@ def build_rich_context(db: Session, user: User) -> dict:
     try:
         adapt = (
             db.query(HealthMemory)
-            .filter(
-                HealthMemory.user_id == user.id,
-                HealthMemory.category == "weekly_adaptation",
-            )
-            .order_by(HealthMemory.created_at.desc())
-            .first()
+            .filter(HealthMemory.user_id == user.id, HealthMemory.category == "weekly_adaptation")
+            .order_by(HealthMemory.created_at.desc()).first()
         )
         if adapt and adapt.content.get("report"):
             ctx["weekly_adaptation"] = {
@@ -260,6 +320,118 @@ def build_rich_context(db: Session, user: User) -> dict:
     except Exception as e:
         logger.debug(f"[Context] adaptation: {e}")
 
+    # ── Past AI recommendations (last 3) ──────────────────────────────────────
+    try:
+        recs = (
+            db.query(HealthMemory)
+            .filter(HealthMemory.user_id == user.id, HealthMemory.category == "ai_recommendation")
+            .order_by(HealthMemory.created_at.desc()).limit(3).all()
+        )
+        ctx["ai_recommendations"] = [
+            {
+                "date": m.content.get("date", "?"),
+                "type": m.content.get("type", "plan"),
+                "summary": m.content.get("summary", ""),
+            }
+            for m in reversed(recs)
+        ]
+    except Exception as e:
+        logger.debug(f"[Context] ai_recommendations: {e}")
+
+    # ── Health profile (conditions) ───────────────────────────────────────────
+    try:
+        from app.models.health_profile import HealthProfile
+        hp = db.query(HealthProfile).filter(HealthProfile.user_id == user.id).first()
+        if hp:
+            conditions = []
+            for field in ("diabetes", "hypertension", "thyroid", "pcos", "asthma"):
+                if getattr(hp, field, False):
+                    conditions.append(field)
+            if hp.other_conditions:
+                conditions.append(hp.other_conditions)
+            ctx["health_profile"] = {
+                "conditions": conditions,
+                "doctor_notes": hp.doctor_notes or None,
+            }
+    except Exception as e:
+        logger.debug(f"[Context] health_profile: {e}")
+
+    # ── Body composition (TDEE, BF%, calorie target) ─────────────────────────
+    try:
+        # Get latest weight
+        latest_w = (
+            db.query(BodyWeightLog)
+            .filter(BodyWeightLog.user_id == user.id)
+            .order_by(BodyWeightLog.logged_at.desc()).first()
+        )
+        weight_kg = latest_w.weight_kg if latest_w else None
+
+        # Pull workout prefs for activity level + goal
+        w_prefs = get_preferences(db, user.id, "workout") or {}
+        # Pull profile prefs for height/age/gender
+        p_prefs = get_preferences(db, user.id, "profile") or {}
+
+        if weight_kg:
+            height_cm = _safe_float(p_prefs.get("height_cm"))
+            age_raw = p_prefs.get("age")
+            age = _parse_age(age_raw)
+            gender = (p_prefs.get("gender") or "").lower() or None
+
+            bc = compute_body_composition(
+                weight_kg=weight_kg,
+                height_cm=height_cm,
+                age=age,
+                gender=gender,
+                activity_level=activity_level_from_prefs(w_prefs),
+                goal=goal_from_prefs(w_prefs),
+            )
+            ctx["body_composition"] = {
+                "weight_kg": weight_kg,
+                "bmr": bc.bmr,
+                "tdee": bc.tdee,
+                "calorie_target": bc.calorie_target,
+                "goal": bc.goal,
+                "bf_pct_estimate": bc.bf_pct_estimate,
+                "lean_mass_kg": bc.lean_mass_kg,
+                "summary": bc.summary,
+            }
+    except Exception as e:
+        logger.debug(f"[Context] body_composition: {e}")
+
+    # ── Active diet plan targets ──────────────────────────────────────────────
+    try:
+        if hasattr(user, "active_diet_plan_id") and user.active_diet_plan_id:
+            diet_plan = db.query(DietPlan).filter(DietPlan.id == user.active_diet_plan_id).first()
+            if diet_plan:
+                ctx["diet_targets"] = {
+                    "calories": diet_plan.target_calories,
+                    "protein_g": round(diet_plan.target_protein or 0),
+                    "carbs_g": round(diet_plan.target_carbs or 0),
+                    "fats_g": round(diet_plan.target_fats or 0),
+                }
+    except Exception as e:
+        logger.debug(f"[Context] diet_targets: {e}")
+
+    # ── Active workout program ────────────────────────────────────────────────
+    try:
+        if hasattr(user, "active_workout_program_id") and user.active_workout_program_id:
+            from app.models.vault_item import VaultItem
+            program = db.query(VaultItem).filter(
+                VaultItem.id == user.active_workout_program_id,
+                VaultItem.user_id == user.id,
+            ).first()
+            if program:
+                content = program.content or {}
+                days = content.get("days", [])
+                day_names = [d.get("name", f"Day {i+1}") for i, d in enumerate(days)]
+                ctx["active_program"] = {
+                    "name": program.title or "Active Program",
+                    "days": day_names,
+                    "total_days": len(days),
+                }
+    except Exception as e:
+        logger.debug(f"[Context] active_program: {e}")
+
     # ── Raw workout sessions ──────────────────────────────────────────────────
     try:
         sessions = (
@@ -269,14 +441,13 @@ def build_rich_context(db: Session, user: User) -> dict:
                 WorkoutSession.status == SessionStatus.COMPLETED,
                 WorkoutSession.completed_at >= week_ago,
             )
-            .order_by(WorkoutSession.completed_at.desc())
-            .limit(7)
-            .all()
+            .order_by(WorkoutSession.completed_at.desc()).limit(7).all()
         )
         for s in sessions:
             ctx["recent_workouts"].append({
                 "date": s.completed_at.strftime("%b %d") if s.completed_at else "?",
                 "duration_mins": s.duration_minutes or 0,
+                "day_number": getattr(s, "day_number", None),
             })
     except Exception as e:
         logger.debug(f"[Context] workouts: {e}")
@@ -286,9 +457,7 @@ def build_rich_context(db: Session, user: User) -> dict:
         meals = (
             db.query(MealLog)
             .filter(MealLog.user_id == user.id, MealLog.logged_at >= three_days_ago)
-            .order_by(MealLog.logged_at.desc())
-            .limit(12)
-            .all()
+            .order_by(MealLog.logged_at.desc()).limit(12).all()
         )
         for m in meals:
             ctx["recent_meals"].append({
@@ -307,9 +476,7 @@ def build_rich_context(db: Session, user: User) -> dict:
         weights = (
             db.query(BodyWeightLog)
             .filter(BodyWeightLog.user_id == user.id)
-            .order_by(BodyWeightLog.logged_at.desc())
-            .limit(14)
-            .all()
+            .order_by(BodyWeightLog.logged_at.desc()).limit(14).all()
         )
         ctx["weight_history"] = [
             {"date": w.logged_at.strftime("%b %d"), "kg": w.weight_kg}
@@ -332,7 +499,8 @@ def build_rich_context(db: Session, user: User) -> dict:
     try:
         _exclude = {
             "disliked_item", "daily_narrative", "morning_brief",
-            "weekly_adaptation", "correlation_insight", "nudge_sent", "notification",
+            "weekly_adaptation", "correlation_insight", "nudge_sent",
+            "notification", "ai_recommendation",
         }
         memories = (
             db.query(HealthMemory)
@@ -340,9 +508,7 @@ def build_rich_context(db: Session, user: User) -> dict:
                 HealthMemory.user_id == user.id,
                 HealthMemory.category.notin_(_exclude),
             )
-            .order_by(HealthMemory.created_at.desc())
-            .limit(20)
-            .all()
+            .order_by(HealthMemory.created_at.desc()).limit(20).all()
         )
         ctx["health_memories"] = [
             {"category": m.category, "content": m.content}
@@ -360,8 +526,70 @@ def build_rich_context(db: Session, user: User) -> dict:
     return ctx
 
 
+# ── Helpers for safe type conversion ─────────────────────────────────────────
+
+def _safe_float(val) -> float | None:
+    try:
+        return float(val) if val not in (None, "", "none") else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_age(val) -> int | None:
+    """Parse age from either an exact int string or a range like '20–29'."""
+    if val is None:
+        return None
+    try:
+        return int(str(val).strip())
+    except ValueError:
+        pass
+    # Range like "20–29" or "20-29"
+    import re
+    m = re.match(r"(\d+)", str(val).strip())
+    if m:
+        return int(m.group(1)) + 5  # midpoint approximation
+    return None
+
+
 def format_context_for_prompt(ctx: dict) -> str:
     lines = [f"USER: {ctx['user_name']}", ""]
+
+    # ── Body composition + calorie targets (always first — grounds everything) ─
+    bc = ctx.get("body_composition")
+    if bc:
+        lines.append("BODY COMPOSITION & CALORIE TARGETS:")
+        lines.append(f"  {bc['summary']}")
+        if ctx.get("diet_targets"):
+            dt = ctx["diet_targets"]
+            lines.append(
+                f"  Active diet plan targets: {dt['calories']} kcal | "
+                f"P:{dt['protein_g']}g C:{dt['carbs_g']}g F:{dt['fats_g']}g"
+            )
+        lines.append("")
+
+    # ── Health conditions (critical — affects every recommendation) ───────────
+    hp = ctx.get("health_profile")
+    if hp and hp.get("conditions"):
+        cond_str = ", ".join(hp["conditions"])
+        lines.append(f"⚠️ HEALTH CONDITIONS (always account for these): {cond_str}")
+        if hp.get("doctor_notes"):
+            lines.append(f"  Doctor notes: {hp['doctor_notes'][:200]}")
+        lines.append("")
+
+    # ── Active workout program ────────────────────────────────────────────────
+    prog = ctx.get("active_program")
+    if prog:
+        day_str = " | ".join(prog["days"]) if prog["days"] else "No days defined"
+        lines.append(f"ACTIVE WORKOUT PROGRAM: {prog['name']} ({prog['total_days']}-day program)")
+        lines.append(f"  Days: {day_str}")
+        lines.append("")
+
+    # ── Past AI recommendations ───────────────────────────────────────────────
+    if ctx.get("ai_recommendations"):
+        lines.append("WHAT I PREVIOUSLY RECOMMENDED (close the loop — reference these):")
+        for r in ctx["ai_recommendations"]:
+            lines.append(f"  [{r['date']}] {r['type'].upper()}: {r['summary']}")
+        lines.append("")
 
     # ── Priority 1: Daily narratives (Layer 1) ─────────────────────────────
     if ctx.get("daily_narratives"):
@@ -374,7 +602,6 @@ def format_context_for_prompt(ctx: dict) -> str:
     if ctx.get("morning_brief"):
         b = ctx["morning_brief"]
         lines.append(f"TODAY'S MORNING BRIEF ({b.get('date', 'today')}):")
-        # Strip markdown headers for cleaner inline context
         brief_text = b.get("text", "").replace("## ", "").replace("# ", "")
         lines.append(f"  {brief_text[:400]}")
         st = b.get("stats", {})
@@ -404,12 +631,13 @@ def format_context_for_prompt(ctx: dict) -> str:
     if ctx["recent_workouts"]:
         lines.append("RECENT WORKOUTS (last 7 days):")
         for w in ctx["recent_workouts"]:
-            lines.append(f"  • {w['date']} — {w['duration_mins']} mins")
+            day_hint = f" (Day {w['day_number']})" if w.get("day_number") else ""
+            lines.append(f"  • {w['date']}{day_hint} — {w['duration_mins']} mins")
     else:
         lines.append("RECENT WORKOUTS: None logged yet.")
     lines.append("")
 
-    # ── Raw meals ─────────────────────────────────────────────────────────
+    # ── Raw meals with calorie gap ────────────────────────────────────────
     if ctx["recent_meals"]:
         lines.append("RECENT NUTRITION (last 3 days):")
         for m in ctx["recent_meals"][:6]:
@@ -417,6 +645,17 @@ def format_context_for_prompt(ctx: dict) -> str:
                 f"  • {m['date']} {m['meal_name']}: {m['calories']} kcal "
                 f"| P:{m['protein_g']}g C:{m['carbs_g']}g F:{m['fats_g']}g"
             )
+        # Show calorie gap vs target
+        if bc and ctx["recent_meals"]:
+            today_str = ctx["recent_meals"][0]["date"]
+            today_cals = sum(
+                m["calories"] for m in ctx["recent_meals"] if m["date"] == today_str
+            )
+            gap = bc["calorie_target"] - today_cals
+            if gap > 0:
+                lines.append(f"  Today: {today_cals} kcal logged — {gap} kcal below target")
+            elif gap < 0:
+                lines.append(f"  Today: {today_cals} kcal logged — {abs(gap)} kcal over target")
     else:
         lines.append("RECENT NUTRITION: No meals logged yet.")
     lines.append("")
@@ -430,6 +669,12 @@ def format_context_for_prompt(ctx: dict) -> str:
             delta = round(latest["kg"] - oldest["kg"], 1)
             direction = "↑" if delta > 0 else ("↓" if delta < 0 else "→")
             lines.append(f"  Trend: {direction} {abs(delta)} kg over {len(ctx['weight_history'])} entries")
+            # Contextualise vs goal
+            if bc:
+                if bc["goal"] == "cut" and delta > 0:
+                    lines.append("  ⚠️ Weight trending up but goal is cut — worth reviewing nutrition")
+                elif bc["goal"] == "bulk" and delta < 0:
+                    lines.append("  ⚠️ Weight trending down but goal is bulk — may need more calories")
         lines.append("")
 
     # ── Water ─────────────────────────────────────────────────────────────
@@ -727,6 +972,65 @@ async def _create_reminder_from_answers(db: Session, user: User, answers: dict):
 
 
 # ─────────────────────────────────────────────────────────────
+# Recommendation memory writer (B-5)
+# ─────────────────────────────────────────────────────────────
+
+def _write_recommendation_memory(
+    db: Session,
+    user_id: int,
+    intent: str,
+    prefs: dict,
+    ctx: dict,
+) -> None:
+    """
+    Write a HealthMemory(category='ai_recommendation') entry capturing what
+    the AI just recommended.  Called before streaming when a full plan-generation
+    flow fires (i.e. flow_context.answers is non-empty).
+
+    Future context reads these entries under "WHAT I PREVIOUSLY RECOMMENDED"
+    so the AI can follow up on its own advice.
+    """
+    try:
+        now = datetime.now(timezone.utc)
+
+        if intent == "workout":
+            days = prefs.get("days_per_week", "?")
+            goal = prefs.get("goal", "?")
+            level = prefs.get("experience", "?")
+            loc = prefs.get("location", "Gym")
+            summary = f"{days} workout program | Goal: {goal} | Level: {level} | Location: {loc}"
+
+        elif intent == "meal":
+            bc = ctx.get("body_composition") or {}
+            target = bc.get("calorie_target") or prefs.get("calorie_target", "?")
+            diet = prefs.get("diet_type", "?")
+            cuisine = prefs.get("cuisine", "Mixed")
+            summary = f"7-day meal plan | Diet: {diet} | Cuisine: {cuisine} | Target: {target} kcal"
+
+        else:
+            return   # only record workout & meal plan generations
+
+        db.add(HealthMemory(
+            user_id=user_id,
+            category="ai_recommendation",
+            source="ai",
+            content={
+                "date": now.strftime("%Y-%m-%d"),
+                "type": intent,
+                "summary": summary,
+            },
+        ))
+        db.commit()
+        logger.info(f"[ai_central] Rec memory: {intent} → {summary[:80]}")
+    except Exception as e:
+        logger.debug(f"[ai_central] rec_memory write failed: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
+# ─────────────────────────────────────────────────────────────
 # Core streaming generator
 # ─────────────────────────────────────────────────────────────
 
@@ -738,17 +1042,18 @@ async def _stream_openai(messages: list, intent: str = "general") -> AsyncGenera
         yield f"data: {json.dumps({'agent': agent_label, 'intent': intent})}\n\n"
 
         stream = await client.chat.completions.create(
-            model="gpt-4.1-nano",
+            model="gpt-5-nano",
             messages=messages,
             stream=True,
-            temperature=0.7,
-            max_tokens=4000,  # 7-day meal plans & full workout programs need headroom
-            timeout=60.0,
+            max_completion_tokens=16000,  # reasoning model — needs headroom for thinking + output
+            timeout=120.0,
         )
+
         async for chunk in stream:
             delta = chunk.choices[0].delta
             if delta.content:
                 yield f"data: {json.dumps({'token': delta.content})}\n\n"
+
         yield f"data: {json.dumps({'done': True, 'intent': intent})}\n\n"
     except Exception as e:
         logger.error(f"[ai_central] Stream error: {e}")
@@ -783,6 +1088,7 @@ async def stream_central(
     disliked = ctx["disliked_items"]
 
     intent = flow_ctx.get("intent") or detect_intent(question)
+    prefs: dict = {}   # populated below for workout/meal; used by rec-memory writer
 
     if intent == "workout":
         prefs = get_preferences(db, current_user.id, "workout") or {}
@@ -848,6 +1154,12 @@ async def stream_central(
 
     messages = _build_messages(system_prompt, conv_history, question)
 
+    # ── Recommendation memory write (B-5) ─────────────────────────────────────
+    # When a workout or meal plan is being generated (answers collected = flow complete),
+    # record what we're about to recommend so future context includes it.
+    if intent in ("workout", "meal") and flow_ctx.get("answers"):
+        _write_recommendation_memory(db, current_user.id, intent, prefs, ctx)
+
     # Log agent usage to health memory (fire-and-forget, non-blocking)
     try:
         db.add(HealthMemory(
@@ -907,8 +1219,8 @@ async def ask_central(
     try:
         client = _get_openai()
         resp = await client.chat.completions.create(
-            model="gpt-4.1-nano", messages=messages, temperature=0.7, max_tokens=4000,
-            timeout=60.0,
+            model="gpt-5-nano", messages=messages, max_completion_tokens=16000,
+            timeout=120.0,
         )
         answer = resp.choices[0].message.content
         try:

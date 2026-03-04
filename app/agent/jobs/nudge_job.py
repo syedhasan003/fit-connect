@@ -85,10 +85,9 @@ def _generate_nudge_text(trigger_type: str, context: dict) -> str:
     try:
         client = _get_openai_client()
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5-nano",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=100,
+            max_completion_tokens=100,
         )
         return response.choices[0].message.content.strip()
     except Exception as e:

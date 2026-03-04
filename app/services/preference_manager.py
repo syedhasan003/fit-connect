@@ -163,6 +163,32 @@ REMINDER_QUESTIONS = [
     },
 ]
 
+# ─────────────────────────────────────────────────────────────
+# Profile questions — collected once for body composition engine
+# Stored as preference_type = "profile"
+# ─────────────────────────────────────────────────────────────
+PROFILE_QUESTIONS = [
+    {
+        "key": "gender",
+        "question": "What's your biological sex? (used for calorie & body-fat calculations)",
+        "options": ["Male", "Female"],
+    },
+    {
+        "key": "age",
+        "question": "How old are you?",
+        "options": ["Under 20", "20–29", "30–39", "40–49", "50+"],
+        "allow_custom": True,
+        "hint": "Type your exact age for the most accurate results",
+    },
+    {
+        "key": "height_cm",
+        "question": "What's your height in cm? (e.g. 175)",
+        "options": ["155", "160", "165", "170", "175", "180", "185", "190"],
+        "allow_custom": True,
+        "hint": "Type your height in centimetres",
+    },
+]
+
 
 def get_questions(flow_type: str) -> list:
     """Returns question list for a given flow type."""
@@ -170,4 +196,5 @@ def get_questions(flow_type: str) -> list:
         "workout": WORKOUT_QUESTIONS,
         "meal": MEAL_QUESTIONS,
         "reminder": REMINDER_QUESTIONS,
+        "profile": PROFILE_QUESTIONS,
     }.get(flow_type, [])

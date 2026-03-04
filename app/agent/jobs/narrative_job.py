@@ -138,10 +138,9 @@ def _synthesise_narrative(events: dict) -> str:
     try:
         client = _get_openai_client()
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5-nano",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.4,
-            max_tokens=400,
+            max_completion_tokens=400,
         )
         return response.choices[0].message.content.strip()
     except Exception as e:

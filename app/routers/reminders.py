@@ -1,6 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from typing import Optional
+import json
+import calendar
 
 from app.core.deps import get_current_user
 from app.db.database import get_db
@@ -10,6 +13,116 @@ from app.schemas.reminder import ReminderCreate, ReminderUpdate
 from app.services.reminder_followup import trigger_ai_followup
 
 router = APIRouter(prefix="/reminders", tags=["Reminders"])
+
+
+# -------------------------------------------------
+# RECURRENCE ENGINE
+# -------------------------------------------------
+_WEEKDAY_MAP = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
+
+def _next_occurrence(
+    scheduled_at: datetime,
+    recurrence: Optional[str],
+    recurrence_days: Optional[str],
+    recurrence_interval: Optional[int],
+) -> Optional[datetime]:
+    """
+    Calculate the next scheduled_at for a recurring reminder.
+    Returns None if recurrence is 'once' or unrecognised.
+
+    Recurrence types:
+      once       → no next occurrence
+      daily      → same time next day
+      weekly     → same time next week
+      biweekly   → same time in 2 weeks
+      monthly    → same time same-ish day next month (clamped to month-end)
+      specific   → recurrence_days JSON array e.g. ["mon","wed","fri"]
+      custom     → recurrence_interval days later
+    """
+    if not recurrence or recurrence == "once":
+        return None
+
+    # Make timezone-aware (assume UTC if naive)
+    if scheduled_at.tzinfo is None:
+        scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+
+    if recurrence == "daily":
+        return scheduled_at + timedelta(days=1)
+
+    elif recurrence == "weekly":
+        return scheduled_at + timedelta(weeks=1)
+
+    elif recurrence == "biweekly":
+        return scheduled_at + timedelta(weeks=2)
+
+    elif recurrence == "monthly":
+        month = scheduled_at.month + 1
+        year = scheduled_at.year
+        if month > 12:
+            month = 1
+            year += 1
+        # Clamp day to the actual max day of the target month
+        max_day = calendar.monthrange(year, month)[1]
+        day = min(scheduled_at.day, max_day)
+        return scheduled_at.replace(year=year, month=month, day=day)
+
+    elif recurrence == "specific" and recurrence_days:
+        try:
+            days = json.loads(recurrence_days)  # e.g. ["mon","wed","fri"]
+            target_weekdays = sorted(
+                [_WEEKDAY_MAP[d.lower()] for d in days if d.lower() in _WEEKDAY_MAP]
+            )
+            if not target_weekdays:
+                return None
+            current_weekday = scheduled_at.weekday()
+            # Find the next weekday strictly after today
+            for wd in target_weekdays:
+                if wd > current_weekday:
+                    return scheduled_at + timedelta(days=(wd - current_weekday))
+            # All target days are earlier in the week — wrap to next week
+            first_wd = target_weekdays[0]
+            days_until = (7 - current_weekday) + first_wd
+            return scheduled_at + timedelta(days=days_until)
+        except Exception:
+            return None
+
+    elif recurrence == "custom" and recurrence_interval:
+        return scheduled_at + timedelta(days=recurrence_interval)
+
+    return None
+
+
+def _spawn_next_reminder(db: Session, reminder: Reminder) -> Optional[int]:
+    """
+    If the reminder recurs, create the next occurrence in the DB and return its ID.
+    Returns None for one-off reminders.
+    """
+    next_dt = _next_occurrence(
+        reminder.scheduled_at,
+        reminder.recurrence,
+        reminder.recurrence_days,
+        reminder.recurrence_interval,
+    )
+    if next_dt is None:
+        return None
+
+    next_reminder = Reminder(
+        user_id             = reminder.user_id,
+        type                = reminder.type,
+        title               = reminder.title,
+        message             = reminder.message,
+        scheduled_at        = next_dt,
+        recurrence          = reminder.recurrence,
+        recurrence_days     = reminder.recurrence_days,
+        recurrence_interval = reminder.recurrence_interval,
+        category_meta       = reminder.category_meta,
+        is_active           = True,
+        consent_required    = reminder.consent_required,
+        missed_processed    = False,
+    )
+    db.add(next_reminder)
+    db.flush()   # get the ID without a full commit
+    return next_reminder.id
 
 
 # -------------------------------------------------
@@ -70,21 +183,32 @@ def create_reminder(
 
 # -------------------------------------------------
 # LIST REMINDERS
+# Query params:
+#   active_only=true  → only is_active=True rows (default: false = all)
+#   history=true      → only inactive rows (for history tab)
 # -------------------------------------------------
 @router.get("/", response_model=list)
 def get_reminders(
+    active_only: Optional[bool] = Query(False, description="Return only active reminders"),
+    history: Optional[bool] = Query(False, description="Return only inactive (past) reminders"),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    reminders = (
-        db.query(Reminder)
-        .filter(Reminder.user_id == current_user.id)
-        .order_by(Reminder.scheduled_at.asc())
-        .all()
-    )
+    q = db.query(Reminder).filter(Reminder.user_id == current_user.id)
 
-    return [
-        {
+    if history:
+        # History tab: inactive reminders, most recent first
+        q = q.filter(Reminder.is_active == False).order_by(Reminder.scheduled_at.desc())
+    elif active_only:
+        q = q.filter(Reminder.is_active == True).order_by(Reminder.scheduled_at.asc())
+    else:
+        # Default: return all reminders (active + inactive), sorted by time
+        q = q.order_by(Reminder.scheduled_at.asc())
+
+    reminders = q.all()
+
+    def _serialize(r):
+        return {
             "id":                   r.id,
             "type":                 r.type,
             "title":                r.title,
@@ -95,7 +219,64 @@ def get_reminders(
             "recurrence_interval":  r.recurrence_interval,
             "category_meta":        r.category_meta,
             "is_active":            r.is_active,
+            "missed_processed":     r.missed_processed,
             "consent_required":     r.consent_required,
+        }
+
+    return [_serialize(r) for r in reminders]
+
+
+# -------------------------------------------------
+# REMINDER HISTORY (dedicated endpoint)
+# Returns inactive reminders for the history tab
+# -------------------------------------------------
+@router.get("/history", response_model=list)
+def get_reminder_history(
+    limit: Optional[int] = Query(50, description="Max number of history items"),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Returns past/completed/acknowledged reminders for the History tab.
+    These are reminders where is_active=False, sorted most recent first.
+    """
+    reminders = (
+        db.query(Reminder)
+        .filter(
+            Reminder.user_id == current_user.id,
+            Reminder.is_active == False,
+        )
+        .order_by(Reminder.scheduled_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    # Build a set of reminder_ids that were explicitly acknowledged by the user
+    inactive_ids = [r.id for r in reminders]
+    acknowledged_ids = set()
+    if inactive_ids:
+        logs = (
+            db.query(ReminderLog.reminder_id)
+            .filter(
+                ReminderLog.reminder_id.in_(inactive_ids),
+                ReminderLog.acknowledged == True,
+            )
+            .all()
+        )
+        acknowledged_ids = {row.reminder_id for row in logs}
+
+    return [
+        {
+            "id":               r.id,
+            "type":             r.type,
+            "title":            r.title,
+            "message":          r.message,
+            "scheduled_at":     ensure_utc(r.scheduled_at).isoformat(),
+            "recurrence":       r.recurrence,
+            "is_active":        r.is_active,
+            "missed_processed": r.missed_processed,
+            # "completed" = user acknowledged it; "missed" = user explicitly marked missed or no response
+            "status":           "completed" if r.id in acknowledged_ids else "missed",
         }
         for r in reminders
     ]
@@ -206,7 +387,7 @@ def acknowledge_reminder(
     if not reminder:
         raise HTTPException(status_code=404, detail="Reminder not found")
 
-    # ✅ CRITICAL FIX: Deactivate the reminder
+    # Deactivate this occurrence
     reminder.is_active = False
     reminder.missed_processed = True
 
@@ -216,8 +397,11 @@ def acknowledge_reminder(
         acknowledged=True,
         acknowledged_at=datetime.utcnow(),
     )
-
     db.add(log)
+
+    # Spawn next occurrence for recurring reminders
+    next_reminder_id = _spawn_next_reminder(db, reminder)
+
     db.commit()
     db.refresh(log)
 
@@ -231,6 +415,7 @@ def acknowledge_reminder(
         "status": "acknowledged",
         "reminder_id": reminder.id,
         "log_id": log.id,
+        "next_reminder_id": next_reminder_id,
         "ai_followup": ai_result,
     }
 
@@ -257,7 +442,7 @@ def mark_reminder_missed(
     if not reminder:
         raise HTTPException(status_code=404, detail="Reminder not found")
 
-    # ✅ CRITICAL FIX: Deactivate the reminder
+    # Deactivate this occurrence
     reminder.is_active = False
     reminder.missed_processed = True
 
@@ -268,8 +453,11 @@ def mark_reminder_missed(
         missed_reason=reason,
         acknowledged_at=datetime.utcnow(),
     )
-
     db.add(log)
+
+    # Spawn next occurrence for recurring reminders (even missed ones keep recurring)
+    next_reminder_id = _spawn_next_reminder(db, reminder)
+
     db.commit()
     db.refresh(log)
 
@@ -283,5 +471,6 @@ def mark_reminder_missed(
         "status": "missed",
         "reminder_id": reminder.id,
         "reason": reason,
+        "next_reminder_id": next_reminder_id,
         "ai_followup": ai_result,
     }

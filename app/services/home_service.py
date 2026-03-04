@@ -33,21 +33,32 @@ class HomeService:
         # -------------------------
         # REMINDERS
         # -------------------------
+        _now_utc_reminders = datetime.utcnow()
+
+        # "Missed today" = ReminderLogs created today where acknowledged=False
+        # (both acknowledge and missed set missed_processed=True on the Reminder,
+        #  but only truly-missed logs have acknowledged=False in ReminderLog)
         missed_reminders = (
             db.query(ReminderLog)
+            .join(Reminder, Reminder.id == ReminderLog.reminder_id)
             .filter(
                 ReminderLog.user_id == user.id,
-                ReminderLog.acknowledged == False
+                ReminderLog.acknowledged == False,
+                Reminder.scheduled_at >= today_start,
+                Reminder.scheduled_at < _now_utc_reminders,
             )
             .count()
         )
 
+        # "Upcoming today" = active reminders not yet fired, scheduled later today
         upcoming_reminders = (
             db.query(Reminder)
             .filter(
                 Reminder.user_id == user.id,
-                Reminder.scheduled_at >= datetime.utcnow(),
-                Reminder.is_active == True
+                Reminder.scheduled_at >= _now_utc_reminders,
+                Reminder.scheduled_at <= today_end,
+                Reminder.is_active == True,
+                Reminder.missed_processed == False,  # not yet fired/sent
             )
             .count()
         )
