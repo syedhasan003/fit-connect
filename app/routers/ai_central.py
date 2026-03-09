@@ -229,6 +229,36 @@ def _classify_intent_llm(text: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────
+# Secondary / inline injury detection
+# ─────────────────────────────────────────────────────────────
+
+# Patterns that indicate the user is mentioning an injury or body part limitation
+# *in the same message* as a workout request (e.g. "make me a plan, I hurt my shoulder")
+_INJURY_SIGNALS = [
+    r"hurt\s+my", r"injured?\s+my", r"pain\s+in", r"pain\s+my",
+    r"pulled\s+my", r"strain(ed)?\s+my", r"sprain(ed)?\s+my",
+    r"tendon", r"torn", r"surgery", r"recovering from",
+    r"bad\s+(knee|shoulder|back|hip|wrist|ankle|elbow|neck)",
+    r"(knee|shoulder|back|hip|wrist|ankle|elbow|neck)\s+(pain|injury|issue|problem)",
+    r"can'?t\s+(do|use|lift)", r"avoid.*exercise", r"skip.*exercise",
+    r"don'?t\s+(train|work)\s+(my\s+)?(leg|arm|chest|shoulder|back)",
+]
+
+
+def _detect_inline_injury(text: str) -> str | None:
+    """
+    Return the user's raw message as injury context if it contains an inline injury mention
+    alongside a workout request (so the trainer can adapt the plan immediately).
+    Returns None if no injury signals found.
+    """
+    t = text.lower()
+    for pat in _INJURY_SIGNALS:
+        if re.search(pat, t):
+            return text.strip()
+    return None
+
+
+# ─────────────────────────────────────────────────────────────
 # Rich context builder
 # ─────────────────────────────────────────────────────────────
 
@@ -730,12 +760,20 @@ def _agent_header(intent: str) -> str:
     return f"ACTIVE AGENT: {agent}\nYou are responding as this specialist. Stay in character.\n\n"
 
 
-def _system_workout(prefs: dict, ctx_text: str, disliked: dict) -> str:
+def _system_workout(prefs: dict, ctx_text: str, disliked: dict, injury_note: str | None = None) -> str:
     days = prefs.get("days_per_week", "4 days").replace(" days", "").replace(" day", "")
     excl = (
         f"\n⚠️ NEVER include these exercises (user has disliked them): {', '.join(disliked['exercises'])}"
         if disliked["exercises"] else ""
     )
+    # Inline injury override — mentioned in THIS message, takes priority over saved prefs
+    inline_injury = (
+        f"\n\n🚨 INLINE INJURY ALERT (mentioned in this exact message — ADAPT THE ENTIRE PLAN AROUND THIS):\n"
+        f'"{injury_note}"\n'
+        f"→ Remove ALL exercises that stress the injured area. Offer safe alternatives. "
+        f"Acknowledge the limitation explicitly at the top of the response."
+    ) if injury_note else ""
+
     return f"""{_agent_header("workout")}{_BASE_PERSONA}
 
 {ctx_text}
@@ -743,7 +781,7 @@ def _system_workout(prefs: dict, ctx_text: str, disliked: dict) -> str:
 USER WORKOUT PREFERENCES:
 • Days/week: {prefs.get('days_per_week','4 days')} | Location: {prefs.get('location','Gym')}
 • Goal: {prefs.get('goal','Build muscle')} | Level: {prefs.get('experience','Intermediate')}
-• Injuries/Avoid: {prefs.get('injuries','None')}{excl}
+• Injuries/Avoid: {prefs.get('injuries','None')}{excl}{inline_injury}
 
 TASK: Generate a complete {days}-day program. FORMAT RULES:
 1. Program name + 1-line description.
@@ -1092,7 +1130,9 @@ async def stream_central(
 
     if intent == "workout":
         prefs = get_preferences(db, current_user.id, "workout") or {}
-        system_prompt = _system_workout(prefs, ctx_text, disliked)
+        # Detect inline injury mentions in THIS message (overrides saved prefs)
+        inline_injury = _detect_inline_injury(question)
+        system_prompt = _system_workout(prefs, ctx_text, disliked, injury_note=inline_injury)
 
     elif intent == "meal":
         prefs = get_preferences(db, current_user.id, "meal") or {}
@@ -1202,7 +1242,8 @@ async def ask_central(
     intent = flow_ctx.get("intent") or detect_intent(question)
 
     if intent == "workout":
-        system_prompt = _system_workout(get_preferences(db, current_user.id, "workout") or {}, ctx_text, disliked)
+        inline_injury = _detect_inline_injury(question)
+        system_prompt = _system_workout(get_preferences(db, current_user.id, "workout") or {}, ctx_text, disliked, injury_note=inline_injury)
     elif intent == "meal":
         system_prompt = _system_meal(get_preferences(db, current_user.id, "meal") or {}, ctx_text, disliked, "")
     elif intent == "motivate":

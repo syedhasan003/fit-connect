@@ -1,14 +1,19 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, and_
 from typing import Optional
 import asyncio
 import json
 import os
 import logging
 from datetime import date
+from pathlib import Path
 
 import httpx
+from dotenv import load_dotenv
+
+# Ensure .env is loaded regardless of import order or working directory
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env", override=False)
 
 from app.core.deps import get_current_user
 from app.db.database import get_db
@@ -16,7 +21,9 @@ from app.models.exercise import Exercise
 
 logger = logging.getLogger(__name__)
 
-YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
+# Read lazily via helper so restarts / env changes are picked up
+def _yt_api_key() -> str:
+    return os.getenv("YOUTUBE_API_KEY", "")
 
 # ── YouTube rate limiter ───────────────────────────────────────────────────────
 # Free quota: 10,000 units/day.  Each search costs 100 units.
@@ -45,6 +52,23 @@ async def _yt_consume_quota():
     async with _yt_quota_lock:
         _yt_quota_used += 1
         logger.debug(f"[YouTube] quota used today: {_yt_quota_used}/{_YT_MAX_SEARCHES_PER_DAY}")
+
+# ── "Not in library" suggestion map ──────────────────────────────────────────
+# When a search returns 0 results, the frontend uses this to show a YouTube
+# search suggestion.  Keys are lowercase search terms the DB doesn't contain;
+# values are the YouTube query string to use (usually the same term).
+# We no longer expand searches with synonyms — users get exact matches only.
+NOT_IN_LIBRARY: dict[str, str] = {
+    "pec deck":              "pec deck machine proper form",
+    "hack squat machine":    "hack squat machine proper form",
+    "smith machine squat":   "smith machine squat proper form",
+    "cable crossover":       "cable crossover chest proper form",
+    "chest press machine":   "chest press machine proper form",
+    "shoulder press machine":"shoulder press machine proper form",
+    "leg press machine":     "leg press machine proper form",
+    "seated row machine":    "seated row machine proper form",
+    "lat pulldown machine":  "lat pulldown machine proper form",
+}
 
 router = APIRouter(prefix="/api/exercises", tags=["Exercises"])
 
@@ -96,7 +120,14 @@ def list_exercises(
     q = db.query(Exercise).filter(Exercise.is_active == True)
 
     if search:
-        q = q.filter(Exercise.name.ilike(f"%{search}%"))
+        # Split into words (ignore single-char tokens) and require ALL to appear
+        # in the name regardless of order.  This makes "incline barbell press"
+        # match "Barbell Incline Bench Press - Medium Grip" correctly.
+        words = [w for w in search.strip().split() if len(w) > 1]
+        if len(words) > 1:
+            q = q.filter(and_(*[Exercise.name.ilike(f"%{w}%") for w in words]))
+        else:
+            q = q.filter(Exercise.name.ilike(f"%{search}%"))
     if muscle:
         q = q.filter(
             or_(
@@ -189,6 +220,7 @@ async def get_exercise_video(
         return {"video_id": exercise.youtube_video_id, "cached": True}
 
     # ── 2. No API key → return null gracefully ───────────────────────────────
+    YOUTUBE_API_KEY = _yt_api_key()
     if not YOUTUBE_API_KEY:
         logger.warning("[YouTube] YOUTUBE_API_KEY not set — skipping video fetch")
         return {"video_id": None, "cached": False}
@@ -260,3 +292,24 @@ async def get_exercise_video(
     except Exception as e:
         logger.error(f"[YouTube] Unexpected error: {e}")
         return {"video_id": None, "cached": False}
+
+
+# ── NOT-IN-LIBRARY HINT ────────────────────────────────────────────────────────
+@router.get("/hint/not-found")
+def not_found_hint(
+    search: str = Query(...),
+    _: any = Depends(get_current_user),
+):
+    """
+    Returns a YouTube search query to show when a search returns 0 results.
+    Falls back to the raw search term if not in the known map.
+    """
+    key = search.lower().strip()
+    yt_query = NOT_IN_LIBRARY.get(key, f"{search} proper form tutorial")
+    yt_url = f"https://www.youtube.com/results?search_query={yt_query.replace(' ', '+')}"
+    return {
+        "search": search,
+        "yt_query": yt_query,
+        "yt_url": yt_url,
+        "in_library": False,
+    }
