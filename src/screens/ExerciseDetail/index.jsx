@@ -239,25 +239,14 @@ export default function ExerciseDetail() {
               }}
             />
           ) : (
-            <a
-              href={ytSearchUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                height: 220, display: "flex", alignItems: "center", justifyContent: "center",
-                flexDirection: "column", gap: 10, textDecoration: "none",
-                background: "linear-gradient(135deg, rgba(255,0,0,0.06), rgba(99,102,241,0.06))",
-                cursor: "pointer",
-              }}
-            >
-              <span style={{ fontSize: 48 }}>🎥</span>
-              <p style={{ color: C.muted2, fontSize: 13, margin: 0, fontWeight: 600 }}>No image — tap to search on YouTube</p>
-              <span style={{
-                padding: "5px 14px", borderRadius: 20,
-                background: "rgba(255,0,0,0.15)", border: "1px solid rgba(255,0,0,0.3)",
-                fontSize: 12, color: "#ff6b6b", fontWeight: 700,
-              }}>▶ Watch on YouTube</span>
-            </a>
+            <div style={{
+              height: 180, display: "flex", alignItems: "center", justifyContent: "center",
+              flexDirection: "column", gap: 8,
+              background: "rgba(255,255,255,0.02)",
+            }}>
+              <span style={{ fontSize: 44 }}>🏋️</span>
+              <p style={{ color: C.muted, fontSize: 12, margin: 0 }}>No image available</p>
+            </div>
           )}
 
           {/* Gradient overlay at bottom */}
@@ -282,25 +271,6 @@ export default function ExerciseDetail() {
             </div>
           )}
 
-          {/* Watch on YouTube button */}
-          <a
-            href={ytSearchUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              position: "absolute", bottom: 12, right: 12,
-              display: "flex", alignItems: "center", gap: 6,
-              background: "#ff0000",
-              borderRadius: 20, padding: "6px 14px",
-              fontSize: 12, fontWeight: 700,
-              color: "#fff",
-              textDecoration: "none",
-              boxShadow: "0 2px 12px rgba(255,0,0,0.4)",
-            }}
-          >
-            ▶ Watch Form
-          </a>
-
           {/* Speed control for animation */}
           {imageUrls.length >= 2 && !imgError && (
             <div style={{
@@ -320,87 +290,111 @@ export default function ExerciseDetail() {
           @keyframes frameFade { from { opacity: 0.55; } to { opacity: 1; } }
         `}</style>
 
-        {/* ── YouTube Form Video ─────────────────────────────────────────── */}
+        {/* ── Form Video / Guide ─────────────────────────────────────────── */}
         <div style={{ marginBottom: 20 }}>
-          {/* Section header with toggle */}
-          <button
-            onClick={() => {
-              if (videoId) {
-                setShowVideo(v => !v);
-              } else if (!videoLoading) {
-                // No cached video — open YouTube search directly
-                window.open(ytSearchUrl, "_blank", "noopener,noreferrer");
-              }
-            }}
-            style={{
-              width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-              background: showVideo ? "rgba(255,0,0,0.08)" : C.surface,
-              border: `1px solid ${showVideo ? "rgba(255,0,0,0.3)" : C.border}`,
-              borderRadius: showVideo ? "14px 14px 0 0" : 14,
-              padding: "12px 16px",
-              cursor: videoLoading ? "default" : "pointer",
-              transition: "all 0.2s",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 18 }}>▶</span>
-              <div style={{ textAlign: "left" }}>
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: C.text }}>
-                  Watch Proper Form
-                </p>
-                <p style={{ margin: 0, fontSize: 11, color: C.muted }}>
-                  {videoLoading
-                    ? "Finding best tutorial…"
-                    : videoId
-                      ? showVideo ? "Tap to hide" : "YouTube tutorial • tap to watch"
-                      : "Search YouTube for tutorials →"}
-                </p>
+
+          {/* ── Loading state ── */}
+          {videoLoading && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 12,
+              background: C.surface, border: `1px solid ${C.border}`,
+              borderRadius: 14, padding: "14px 16px",
+            }}>
+              <div style={{
+                width: 18, height: 18, flexShrink: 0,
+                border: "2px solid rgba(255,0,0,0.4)", borderTopColor: "#ff0000",
+                borderRadius: "50%", animation: "spin 0.8s linear infinite",
+              }} />
+              <div>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: C.text }}>Finding best tutorial…</p>
+                <p style={{ margin: 0, fontSize: 11, color: C.muted }}>Checking our video library</p>
               </div>
             </div>
-            {videoLoading && (
-              <div style={{
-                width: 16, height: 16,
-                border: "2px solid rgba(255,0,0,0.4)",
-                borderTopColor: "#ff0000",
-                borderRadius: "50%",
-                animation: "spin 0.8s linear infinite",
-              }} />
-            )}
-            {!videoLoading && (
-              <span style={{
-                color: C.muted, fontSize: 14,
-                transform: (videoId && showVideo) ? "rotate(180deg)" : "none",
-                transition: "transform 0.25s",
-              }}>
-                {videoId ? "▾" : "↗"}
-              </span>
-            )}
-          </button>
+          )}
 
-          {/* Inline YouTube embed */}
-          {showVideo && videoId && (
-            <div style={{
-              border: `1px solid rgba(255,0,0,0.3)`,
-              borderTop: "none",
-              borderRadius: "0 0 14px 14px",
-              overflow: "hidden",
-              background: "#000",
-              position: "relative",
-              paddingTop: "56.25%", // 16:9 aspect ratio
-            }}>
-              <iframe
-                src={`https://www.youtube.com/embed/${videoId}?autoplay=1&modestbranding=1&rel=0&iv_load_policy=3`}
-                title={`${exercise.name} proper form`}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
+          {/* ── Video available: collapsible embed ── */}
+          {!videoLoading && videoId && (
+            <>
+              <button
+                onClick={() => setShowVideo(v => !v)}
                 style={{
-                  position: "absolute",
-                  top: 0, left: 0,
-                  width: "100%", height: "100%",
-                  border: "none",
+                  width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                  background: showVideo ? "rgba(255,0,0,0.08)" : C.surface,
+                  border: `1px solid ${showVideo ? "rgba(255,0,0,0.3)" : C.border}`,
+                  borderRadius: showVideo ? "14px 14px 0 0" : 14,
+                  padding: "12px 16px", cursor: "pointer", transition: "all 0.2s",
                 }}
-              />
-            </div>
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{
+                    width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+                    background: "rgba(255,0,0,0.15)", display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 14,
+                  }}>▶</span>
+                  <div style={{ textAlign: "left" }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: C.text }}>Watch Proper Form</p>
+                    <p style={{ margin: 0, fontSize: 11, color: C.muted }}>
+                      {showVideo ? "Tap to hide" : "YouTube tutorial · tap to watch"}
+                    </p>
+                  </div>
+                </div>
+                <span style={{
+                  color: C.muted, fontSize: 14,
+                  transform: showVideo ? "rotate(180deg)" : "none",
+                  transition: "transform 0.25s",
+                }}>▾</span>
+              </button>
+              {showVideo && (
+                <div style={{
+                  border: "1px solid rgba(255,0,0,0.3)", borderTop: "none",
+                  borderRadius: "0 0 14px 14px", overflow: "hidden",
+                  background: "#000", position: "relative", paddingTop: "56.25%",
+                }}>
+                  <iframe
+                    src={`https://www.youtube.com/embed/${videoId}?autoplay=1&modestbranding=1&rel=0&iv_load_policy=3`}
+                    title={`${exercise.name} proper form`}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }}
+                  />
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── No cached video: direct YouTube search for this exercise ── */}
+          {!videoLoading && !videoId && (
+            <a
+              href={ytSearchUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "flex", alignItems: "center", gap: 14,
+                background: "rgba(255,0,0,0.07)",
+                border: "1px solid rgba(255,0,0,0.22)",
+                borderRadius: 14, padding: "14px 16px",
+                textDecoration: "none",
+              }}
+            >
+              {/* YouTube logo pill */}
+              <span style={{
+                width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                background: "#ff0000",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 16, color: "#fff", fontWeight: 700,
+              }}>▶</span>
+
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: "0 0 2px", fontSize: 13, fontWeight: 700, color: C.text }}>
+                  Watch {exercise.name} on YouTube
+                </p>
+                <p style={{ margin: 0, fontSize: 11, color: C.muted }}>
+                  Proper form · technique tutorial · opens in browser
+                </p>
+              </div>
+
+              <span style={{ color: C.muted, fontSize: 16, flexShrink: 0 }}>↗</span>
+            </a>
           )}
         </div>
 
@@ -438,18 +432,27 @@ export default function ExerciseDetail() {
 
         {/* ── Instructions ───────────────────────────────────────────────── */}
         {instructions.length > 0 && (
+          <div id="form-guide-section">
           <Section title="How to Perform">
-            <ol style={{ margin: 0, padding: "0 0 0 20px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {instructions.map((step, i) => (
-                <li key={i} style={{
-                  color: C.muted2, fontSize: 14, lineHeight: 1.6, marginBottom: 10,
-                  paddingLeft: 4,
+                <div key={i} style={{
+                  display: "flex", gap: 12, alignItems: "flex-start",
+                  background: C.surface, border: `1px solid ${C.border}`,
+                  borderRadius: 12, padding: "10px 12px",
                 }}>
-                  {step}
-                </li>
+                  <span style={{
+                    width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+                    background: `rgba(99,102,241,0.15)`, border: `1px solid rgba(99,102,241,0.3)`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 11, fontWeight: 700, color: C.accent,
+                  }}>{i + 1}</span>
+                  <p style={{ margin: 0, fontSize: 13, color: C.muted2, lineHeight: 1.6 }}>{step}</p>
+                </div>
               ))}
-            </ol>
+            </div>
           </Section>
+          </div>
         )}
 
         {/* ── Tips ───────────────────────────────────────────────────────── */}

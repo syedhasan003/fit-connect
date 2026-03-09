@@ -610,10 +610,10 @@ function DayCard({ day, dayIndex, daysLength, open, setOpen, onRemoveDay, onUpda
 // ─── Muscle Block ─────────────────────────────────────────────────────────────
 function MuscleBlock({ muscle, dayIndex, muscleIndex, open, setOpen, onRemove, onAddArea, onRemoveArea, onAddExercise, onRemoveExercise, onAddSet, onUpdateSet, onRemoveSet }) {
   return (
-    <div style={{ marginTop: 20, borderRadius: 18, padding: "18px", background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.06)" }}>
+    <div style={{ marginTop: 20, borderRadius: 18, padding: "16px 12px 16px 16px", background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.06)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <h3 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "#a78bfa" }}>{muscle.name}</h3>
-        <button onClick={onRemove} style={{ width: 28, height: 28, borderRadius: "50%", border: "none", background: "rgba(239,68,68,0.15)", color: "#ef4444", cursor: "pointer", fontSize: 14 }}>✕</button>
+        <button onClick={onRemove} style={{ width: 28, height: 28, borderRadius: "50%", border: "none", background: "rgba(239,68,68,0.15)", color: "#ef4444", cursor: "pointer", fontSize: 14, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
       </div>
       <SmallButton onClick={() => setOpen(`area-${dayIndex}-${muscleIndex}`)} text="+ Add Area" color="#6366f1" />
       {muscle.areas.map((ar, a) => (
@@ -635,10 +635,10 @@ function MuscleBlock({ muscle, dayIndex, muscleIndex, open, setOpen, onRemove, o
 // ─── Area Block ───────────────────────────────────────────────────────────────
 function AreaBlock({ area, dayIndex, muscleIndex, areaIndex, muscleName, open, setOpen, onRemove, onAddExercise, onRemoveExercise, onAddSet, onUpdateSet, onRemoveSet }) {
   return (
-    <div style={{ marginTop: 14, borderRadius: 16, padding: "16px", background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,255,255,0.04)" }}>
+    <div style={{ marginTop: 14, borderRadius: 16, padding: "14px 8px 14px 14px", background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,255,255,0.04)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <h4 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "#818cf8" }}>{area.name}</h4>
-        <button onClick={onRemove} style={{ width: 24, height: 24, borderRadius: "50%", border: "none", background: "rgba(239,68,68,0.15)", color: "#ef4444", cursor: "pointer", fontSize: 12 }}>✕</button>
+        <button onClick={onRemove} style={{ width: 28, height: 28, borderRadius: "50%", border: "none", background: "rgba(239,68,68,0.15)", color: "#ef4444", cursor: "pointer", fontSize: 14, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
       </div>
       <SmallButton onClick={() => setOpen(`ex-${dayIndex}-${muscleIndex}-${areaIndex}`)} text="+ Add Exercise" color="#ec4899" />
       {area.exercises && area.exercises.map((ex, e) => (
@@ -674,7 +674,7 @@ function ExerciseCard({ exercise, onRemove, onAddSet, onUpdateSet, onRemoveSet }
         animation: "borderGlow 3s ease-in-out infinite", pointerEvents: "none",
       }} />
 
-      <div style={{ position: "relative", zIndex: 1, padding: 14 }}>
+      <div style={{ position: "relative", zIndex: 1, padding: "12px 6px 12px 12px" }}>
         {/* Collapsible header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <button
@@ -709,8 +709,9 @@ function ExerciseCard({ exercise, onRemove, onAddSet, onUpdateSet, onRemoveSet }
             }}
           >ℹ</button>
           <button onClick={onRemove} style={{
-            width: 24, height: 24, borderRadius: "50%", border: "none",
-            background: "rgba(239,68,68,0.15)", color: "#ef4444", cursor: "pointer", fontSize: 12, marginLeft: 6,
+            width: 28, height: 28, borderRadius: "50%", border: "none", flexShrink: 0,
+            background: "rgba(239,68,68,0.15)", color: "#ef4444", cursor: "pointer", fontSize: 14, marginLeft: 6,
+            display: "flex", alignItems: "center", justifyContent: "center",
           }}>✕</button>
         </div>
 
@@ -718,19 +719,20 @@ function ExerciseCard({ exercise, onRemove, onAddSet, onUpdateSet, onRemoveSet }
         {expanded && (
           <div style={{ marginTop: 12 }}>
             {/* Column headers */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr) auto", gap: 8, marginBottom: 6 }}>
-              {["Reps", "Weight (kg)", "RIR", ""].map(h => (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 32px", gap: 6, marginBottom: 6 }}>
+              {["Reps", "kg", "RIR", ""].map(h => (
                 <span key={h} style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontWeight: 600, letterSpacing: 0.8, textAlign: "center" }}>{h}</span>
               ))}
             </div>
             {exercise.sets.map((set, s) => (
-              <div key={s} style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr) auto", gap: 8, marginBottom: 8 }}>
+              <div key={s} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 32px", gap: 6, marginBottom: 8, alignItems: "center" }}>
                 <Input placeholder="Reps" value={set.reps} onChange={(e) => onUpdateSet(s, "reps", e.target.value)} />
                 <Input placeholder="kg" value={set.weight} onChange={(e) => onUpdateSet(s, "weight", e.target.value)} />
                 <Input placeholder="RIR" value={set.rir} onChange={(e) => onUpdateSet(s, "rir", e.target.value)} />
                 <button onClick={() => onRemoveSet(s)} style={{
-                  width: 36, height: 36, borderRadius: 10, border: "none",
-                  background: "rgba(239,68,68,0.12)", color: "#ef4444", cursor: "pointer", fontSize: 14,
+                  width: 32, height: 32, borderRadius: "50%", border: "none", flexShrink: 0,
+                  background: "rgba(239,68,68,0.12)", color: "#ef4444", cursor: "pointer", fontSize: 13,
+                  display: "flex", alignItems: "center", justifyContent: "center",
                 }}>✕</button>
               </div>
             ))}
@@ -750,9 +752,10 @@ function Input({ placeholder, value, onChange }) {
       type="text" placeholder={placeholder} value={value} onChange={onChange}
       onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)}
       style={{
-        padding: "10px 12px", borderRadius: 10,
+        width: "100%", minWidth: 0, boxSizing: "border-box",
+        padding: "9px 8px", borderRadius: 10, textAlign: "center",
         border: isFocused ? "1px solid rgba(139,92,246,0.4)" : "1px solid rgba(255,255,255,0.08)",
-        background: "rgba(0,0,0,0.4)", color: "#fff", fontSize: 14, outline: "none",
+        background: "rgba(0,0,0,0.4)", color: "#fff", fontSize: 13, outline: "none",
         boxShadow: isFocused ? "0 0 0 3px rgba(139,92,246,0.1)" : "none", transition: "all 0.2s",
       }}
     />

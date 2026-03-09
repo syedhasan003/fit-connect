@@ -128,6 +128,86 @@ function ExerciseCard({ exercise, onInfoClick }) {
   );
 }
 
+// ── Not-in-library empty state ────────────────────────────────────────────────
+function NotInLibrary({ search, hasFilters, onClearFilters }) {
+  if (!search && hasFilters) {
+    return (
+      <div style={{ textAlign: "center", paddingTop: 60 }}>
+        <p style={{ fontSize: 32, marginBottom: 8 }}>🔍</p>
+        <p style={{ color: C.muted, fontSize: 14, marginBottom: 12 }}>No exercises match these filters</p>
+        <button onClick={onClearFilters} style={{ color: C.accent, background: "none", border: "none", cursor: "pointer", fontSize: 13 }}>
+          Clear filters
+        </button>
+      </div>
+    );
+  }
+
+  if (!search) {
+    return (
+      <div style={{ textAlign: "center", paddingTop: 60 }}>
+        <p style={{ fontSize: 32, marginBottom: 8 }}>🏋️</p>
+        <p style={{ color: C.muted, fontSize: 14 }}>No exercises found</p>
+      </div>
+    );
+  }
+
+  // If the search looks like a real exercise name (4+ chars), offer YouTube.
+  // Shorter/gibberish inputs (e.g. "huh") get nothing.
+  const looksLikeExercise = search.trim().length >= 4;
+  const ytQuery = encodeURIComponent(`${search.trim()} proper form`);
+  const ytUrl   = `https://www.youtube.com/results?search_query=${ytQuery}`;
+
+  return (
+    <div style={{ textAlign: "center", paddingTop: 60 }}>
+      <p style={{ fontSize: 36, margin: "0 0 12px" }}>🔍</p>
+      <p style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "0 0 8px" }}>
+        No results for "{search}"
+      </p>
+
+      {looksLikeExercise ? (
+        <>
+          <p style={{ fontSize: 13, color: C.muted, margin: "0 auto 20px", maxWidth: 260, lineHeight: 1.6 }}>
+            Not in our library yet — watch it on YouTube instead.
+          </p>
+          <a
+            href={ytUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              background: "#ff0000",
+              color: "#fff",
+              borderRadius: 10,
+              padding: "10px 18px",
+              fontSize: 13,
+              fontWeight: 700,
+              textDecoration: "none",
+              marginBottom: hasFilters ? 16 : 0,
+            }}
+          >
+            ▶ Watch "{search}" on YouTube
+          </a>
+        </>
+      ) : (
+        <p style={{ fontSize: 13, color: C.muted, margin: "0 auto 20px", maxWidth: 260, lineHeight: 1.6 }}>
+          Try searching by movement name, e.g.{" "}
+          <span style={{ color: C.accent }}>"fly"</span>,{" "}
+          <span style={{ color: C.accent }}>"romanian deadlift"</span>, or{" "}
+          <span style={{ color: C.accent }}>"incline press"</span>.
+        </p>
+      )}
+
+      {hasFilters && (
+        <button onClick={onClearFilters} style={{ display: "block", margin: "8px auto 0", color: C.accent, background: "none", border: "none", cursor: "pointer", fontSize: 13 }}>
+          Clear filters
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function ExerciseLibrary() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -279,11 +359,7 @@ export default function ExerciseLibrary() {
             <p style={{ color: C.muted, fontSize: 13 }}>Loading exercises…</p>
           </div>
         ) : exercises.length === 0 ? (
-          <div style={{ textAlign: "center", paddingTop: 60 }}>
-            <p style={{ fontSize: 32, marginBottom: 8 }}>🔍</p>
-            <p style={{ color: C.muted, fontSize: 14 }}>No exercises found</p>
-            <button onClick={clearFilters} style={{ color: C.accent, background: "none", border: "none", cursor: "pointer", fontSize: 13, marginTop: 8 }}>Clear filters</button>
-          </div>
+          <NotInLibrary search={search} hasFilters={hasActiveFilters} onClearFilters={clearFilters} />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {exercises.map(ex => (
