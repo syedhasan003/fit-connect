@@ -110,3 +110,33 @@ export async function fetchFeaturedGyms(lat, lng) {
   const { data } = await api.get("/discovery/featured", { params });
   return data;
 }
+
+/**
+ * Fetch chains / brands near a location.
+ * Returns grouped data: chain_name, branch_count, avg_rating, nearest_km, etc.
+ * @param {number} [lat]
+ * @param {number} [lng]
+ * @param {number} [radiusKm=10]
+ */
+export async function fetchChains(lat, lng, radiusKm = 10) {
+  const params = { radius_km: radiusKm };
+  if (lat != null) params.user_lat = lat;
+  if (lng != null) params.user_lng = lng;
+  const { data } = await api.get("/discovery/chains", { params });
+  return data;
+}
+
+/**
+ * Fetch gyms filtered by category.
+ * @param {string} category - gym | turf | swimming | yoga | boxing | ...
+ * @param {number} [lat]
+ * @param {number} [lng]
+ * @param {number} [limit=20]
+ */
+export async function fetchGymsByCategory(category, lat, lng, limit = 20) {
+  const params = { category, sort_by: "distance", limit };
+  if (lat != null) params.user_lat = lat;
+  if (lng != null) params.user_lng = lng;
+  const { data } = await api.get("/discovery/gyms", { params });
+  return data;
+}
