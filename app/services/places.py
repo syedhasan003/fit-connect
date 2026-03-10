@@ -71,6 +71,68 @@ NEARBY_FIELDS = (
 # Timeout for external HTTP calls (seconds)
 HTTP_TIMEOUT = 10
 
+# ── Known premium chains (India-centric, case-insensitive substring match) ───
+PREMIUM_CHAINS: list[tuple[str, str]] = [
+    # (match_keyword, normalised_display_name)
+    ("cult.fit",          "Cult.fit"),
+    ("cult fit",          "Cult.fit"),
+    ("curefit",           "Cult.fit"),
+    ("gold's gym",        "Gold's Gym"),
+    ("golds gym",         "Gold's Gym"),
+    ("gold gym",          "Gold's Gym"),
+    ("anytime fitness",   "Anytime Fitness"),
+    ("snap fitness",      "Snap Fitness"),
+    ("fitness first",     "Fitness First"),
+    ("talwalkars",        "Talwalkars"),
+    ("true fitness",      "True Fitness"),
+    ("f45",               "F45"),
+    ("crossfit",          "CrossFit"),
+    ("physique 57",       "Physique 57"),
+    ("powerhouse gym",    "Powerhouse Gym"),
+    ("la fitness",        "LA Fitness"),
+    ("pure gym",          "Pure Gym"),
+    ("crunch fitness",    "Crunch Fitness"),
+    ("24 hour fitness",   "24 Hour Fitness"),
+    ("planet fitness",    "Planet Fitness"),
+    ("nuffield",          "Nuffield Health"),
+    ("vi fitness",        "Vi Fitness"),
+    ("iron world",        "Iron World"),
+    ("fitness one",       "Fitness One"),
+    ("energy fitness",    "Energy Fitness"),
+]
+
+# ── Category keyword → category slug ─────────────────────────────────────────
+CATEGORY_KEYWORDS: list[tuple[str, list[str]]] = [
+    ("swimming",  ["swimming", "pool", "aquatic", "natatorium", "swim"]),
+    ("yoga",      ["yoga", "pilates", "wellness center", "meditation", "zen studio"]),
+    ("boxing",    ["boxing", "mma", "muay thai", "martial art", "karate",
+                   "judo", "taekwondo", "kickboxing", "combat sport"]),
+    ("cricket",   ["cricket"]),
+    ("football",  ["football", "soccer"]),
+    ("badminton", ["badminton"]),
+    ("squash",    ["squash"]),
+    ("turf",      ["turf", "arena", "ground", "sports complex", "sports village",
+                   "sport center", "sports center"]),
+    ("crossfit",  ["crossfit", "cross fit"]),
+    ("trainer",   ["personal trainer", "pt studio", "coaching studio"]),
+]
+
+def _infer_category(name: str) -> str:
+    """Return category slug from gym name keywords."""
+    low = name.lower()
+    for category, keywords in CATEGORY_KEYWORDS:
+        if any(kw in low for kw in keywords):
+            return category
+    return "gym"
+
+def _infer_chain(name: str) -> str | None:
+    """Return normalised chain name if the gym belongs to a known chain."""
+    low = name.lower()
+    for keyword, display_name in PREMIUM_CHAINS:
+        if keyword in low:
+            return display_name
+    return None
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -251,7 +313,8 @@ def upsert_gym_from_place(db: Session, place: dict, details: Optional[dict] = No
         logger.info(f"[Places] Updating gym: {source.get('name')} ({place_id})")
 
     # Update all fields
-    gym.name                  = source.get("name") or place.get("name", "Unknown Gym")
+    gym_name = source.get("name") or place.get("name", "Unknown Gym")
+    gym.name                  = gym_name
     gym.address               = address
     gym.lat                   = lat
     gym.lng                   = lng
@@ -263,6 +326,11 @@ def upsert_gym_from_place(db: Session, place: dict, details: Optional[dict] = No
     gym.opening_hours_json    = opening_hours_clean
     gym.photo_references_json = photo_refs
     gym.places_fetched_at     = datetime.now(timezone.utc)
+
+    # Marketplace fields — infer from name (don't overwrite if owner has claimed)
+    if not gym.is_claimed:
+        gym.category   = _infer_category(gym_name)
+        gym.chain_name = _infer_chain(gym_name)
 
     db.flush()  # get gym.id
 

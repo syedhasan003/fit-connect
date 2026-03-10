@@ -15,6 +15,19 @@ class Gym(Base):
     cover_image_url = Column(String, nullable=True)
     gallery_images = Column(JSON, default=[])
 
+    # ── Marketplace fields ──────────────────────────────────────────────────
+    category        = Column(String, default="gym", nullable=True, index=True)
+    # gym | turf | swimming | yoga | boxing | cricket | football | badminton | squash | trainer
+
+    chain_name      = Column(String, nullable=True, index=True)
+    # Normalised chain brand, e.g. "Cult.fit" — all branches share the same value
+
+    is_sponsored    = Column(Boolean, default=False)
+    # Outlet has paid for boosted placement in Discovery
+
+    sponsored_rank  = Column(Integer, default=9999)
+    # Lower number = appears earlier in sponsored slot (1 = top of feed)
+
     # ── Google Places data ──────────────────────────────────────────────────
     place_id            = Column(String, unique=True, nullable=True, index=True)
     places_fetched_at   = Column(DateTime(timezone=True), nullable=True)   # cache TTL

@@ -101,6 +101,12 @@ def _build_gym_out(gym: Gym, amenities: Optional[GymAmenities],
         address=gym.address,
         lat=gym.lat,
         lng=gym.lng,
+        # marketplace fields
+        category=gym.category or "gym",
+        chain_name=gym.chain_name,
+        is_sponsored=gym.is_sponsored or False,
+        sponsored_rank=gym.sponsored_rank or 9999,
+        # places data
         rating=gym.rating,
         user_ratings_total=gym.user_ratings_total,
         price_level=gym.price_level,
@@ -150,7 +156,9 @@ async def discover_gyms(
     is_premium:     Optional[bool]  = Query(None),
     has_pool:       Optional[bool]  = Query(None),
     open_now:       Optional[bool]  = Query(None),
-    sort_by:        str             = Query("distance"),   # distance | popular | newest
+    category:       Optional[str]   = Query(None),   # gym | turf | swimming | yoga | ...
+    sponsored_only: Optional[bool]  = Query(None),   # True = sponsored feed only
+    sort_by:        str             = Query("distance"),   # distance | popular | newest | sponsored
     limit:          int             = Query(30),
     db:             Session         = Depends(get_db),
     current_user                    = Depends(get_current_user),
@@ -184,8 +192,14 @@ async def discover_gyms(
         query = query.filter(GymAmenities.is_premium == is_premium)
     if has_pool is not None:
         query = query.filter(GymAmenities.has_pool == has_pool)
+    if category is not None:
+        query = query.filter(Gym.category == category)
+    if sponsored_only:
+        query = query.filter(Gym.is_sponsored == True)
 
-    if sort_by == "newest":
+    if sort_by == "sponsored":
+        query = query.order_by(Gym.sponsored_rank.asc())
+    elif sort_by == "newest":
         query = query.order_by(Gym.created_at.desc())
     elif sort_by == "popular":
         query = query.order_by(func.count(Visit.id).desc())
@@ -291,6 +305,73 @@ async def get_gym_photo(
     except httpx.HTTPError as e:
         logger.error(f"[Photo proxy] HTTP error: {e}")
         raise HTTPException(status_code=502, detail="Failed to fetch photo")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /discovery/chains — chain brands near user
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/chains")
+async def nearby_chains(
+    user_lat: Optional[float] = Query(None),
+    user_lng: Optional[float] = Query(None),
+    radius_km: float          = Query(10.0),
+    db: Session               = Depends(get_db),
+    current_user              = Depends(get_current_user),
+):
+    """
+    Returns a list of chains (brands) that have at least 1 branch near the user.
+    Each entry includes: chain_name, branch_count, avg_rating, nearest branch info.
+    """
+    lat = user_lat or DEFAULT_LAT
+    lng = user_lng or DEFAULT_LNG
+
+    gyms = db.query(Gym).filter(
+        Gym.chain_name.isnot(None),
+        Gym.lat.isnot(None),
+        Gym.lng.isnot(None),
+    ).all()
+
+    # Group by chain, filter by radius
+    chains: dict[str, dict] = {}
+    for gym in gyms:
+        dist = _haversine(lat, lng, gym.lat, gym.lng)
+        if dist is None or dist > radius_km:
+            continue
+
+        chain = gym.chain_name
+        if chain not in chains:
+            chains[chain] = {
+                "chain_name":    chain,
+                "branch_count":  0,
+                "total_rating":  0.0,
+                "rated_count":   0,
+                "nearest_km":    dist,
+                "nearest_name":  gym.name,
+                "nearest_id":    gym.id,
+                "nearest_addr":  gym.address,
+                "category":      gym.category or "gym",
+            }
+
+        c = chains[chain]
+        c["branch_count"] += 1
+        if gym.rating:
+            c["total_rating"] += gym.rating
+            c["rated_count"]  += 1
+        if dist < c["nearest_km"]:
+            c["nearest_km"]   = dist
+            c["nearest_name"] = gym.name
+            c["nearest_id"]   = gym.id
+            c["nearest_addr"] = gym.address
+
+    result = []
+    for c in chains.values():
+        c["avg_rating"] = round(c["total_rating"] / c["rated_count"], 1) if c["rated_count"] else None
+        c["nearest_km"] = round(c["nearest_km"], 2)
+        result.append(c)
+
+    result.sort(key=lambda x: (x["nearest_km"], -(x["avg_rating"] or 0)))
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────────────────
