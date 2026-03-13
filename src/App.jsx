@@ -28,6 +28,8 @@ import CentralAnswerDetail from "./screens/CentralAnswers/CentralAnswerDetail";
 import ManualWorkoutsList from "./screens/ManualWorkouts/ManualWorkoutsList";
 import ManualWorkoutDetail from "./screens/ManualWorkouts/ManualWorkoutDetail";
 import DietPlansList from "./screens/DietPlans/DietPlansList";
+import CollectionsList from "./screens/Collections/CollectionsList";
+import CollectionDetail from "./screens/Collections/CollectionDetail";
 
 // ✅ REMINDERS ROUTES
 import Reminders from "./screens/Reminders";
@@ -189,6 +191,25 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <DietPlansList />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* ✅ COLLECTIONS */}
+      <Route
+        path="/vault/collections"
+        element={
+          <ProtectedRoute>
+            <CollectionsList />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/vault/collections/:id"
+        element={
+          <ProtectedRoute>
+            <CollectionDetail />
           </ProtectedRoute>
         }
       />

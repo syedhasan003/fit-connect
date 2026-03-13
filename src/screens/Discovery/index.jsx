@@ -1,56 +1,46 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchGyms, fetchChains } from "../../api/discovery";
 import { getCurrentUser } from "../../api/user";
+import BottomNav from "../../components/navigation/BottomNav";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Design tokens
+// Design tokens — aligned with vaultDesign.js Onyx system
 // ─────────────────────────────────────────────────────────────────────────────
 const T = {
-  bg:       "#F7F7F9",
-  surface:  "#FFFFFF",
-  border:   "#EFEFEF",
-  text:     "#111111",
-  sub:      "#8A8A8E",
-  purple:   "#7C3AED",
-  purpleL:  "#EDE9FE",
-  shadow:   "0 2px 16px rgba(0,0,0,0.06)",
-  shadowMd: "0 6px 24px rgba(0,0,0,0.10)",
-  rad:      20,
+  bg:       "#0A0A0A",
+  s1:       "#111111",
+  s2:       "#1A1A1A",
+  s3:       "#222222",
+  border:   "#1E1E1E",
+  border2:  "#2A2A2A",
+  t1:       "#FFFFFF",
+  t2:       "#9CA3AF",
+  t3:       "#6B7280",
+  lime:     "#7ADE00",
+  limeDim:  "rgba(122,222,0,0.10)",
+  limeGlow: "rgba(122,222,0,0.22)",
+  rad:      16,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Category config
 // ─────────────────────────────────────────────────────────────────────────────
 const CATEGORIES = [
-  { label: "Gyms",      key: "gym",        from: "#7C3AED", to: "#6366f1", emoji: "🏋️" },
-  { label: "Trainers",  key: "trainer",    from: "#EA580C", to: "#F59E0B", emoji: "🧑‍🏫" },
-  { label: "Turfs",     key: "turf",       from: "#16A34A", to: "#22D3EE", emoji: "⚽" },
-  { label: "Swimming",  key: "swimming",   from: "#0284C7", to: "#06B6D4", emoji: "🏊" },
-  { label: "Yoga",      key: "yoga",       from: "#DB2777", to: "#A855F7", emoji: "🧘" },
-  { label: "Boxing",    key: "boxing",     from: "#DC2626", to: "#EA580C", emoji: "🥊" },
-  { label: "Cricket",   key: "cricket",    from: "#D97706", to: "#F97316", emoji: "🏏" },
-  { label: "Football",  key: "football",   from: "#65A30D", to: "#16A34A", emoji: "🥅" },
-  { label: "Badminton", key: "badminton",  from: "#0D9488", to: "#0284C7", emoji: "🏸" },
-  { label: "Squash",    key: "squash",     from: "#7C3AED", to: "#DB2777", emoji: "🎾" },
+  { label: "Gym",       key: "gym"       },
+  { label: "Pool",      key: "swimming"  },
+  { label: "Yoga",      key: "yoga"      },
+  { label: "Boxing",    key: "boxing"    },
+  { label: "Turf",      key: "turf"      },
+  { label: "Badminton", key: "badminton" },
+  { label: "Cricket",   key: "cricket"   },
+  { label: "Football",  key: "football"  },
 ];
 
-// Consistent gradient per gym name
-function gradientForName(name = "") {
-  const p = [
-    ["#7C3AED","#6366f1"], ["#6366f1","#3B82F6"], ["#DB2777","#A855F7"],
-    ["#0D9488","#06B6D4"], ["#EA580C","#F59E0B"], ["#16A34A","#06B6D4"],
-    ["#7C3AED","#DB2777"], ["#0284C7","#06B6D4"],
-  ];
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
-  return { from: p[Math.abs(h) % p.length][0], to: p[Math.abs(h) % p.length][1] };
-}
-
 const CITIES = [
+  { label: "Bengaluru",  lat: 12.9716, lng: 77.5946 },
   { label: "Chennai",    lat: 13.0827, lng: 80.2707 },
   { label: "Mumbai",     lat: 19.0760, lng: 72.8777 },
-  { label: "Bangalore",  lat: 12.9716, lng: 77.5946 },
   { label: "Delhi",      lat: 28.6139, lng: 77.2090 },
   { label: "Hyderabad",  lat: 17.3850, lng: 78.4867 },
   { label: "Pune",       lat: 18.5204, lng: 73.8567 },
@@ -59,31 +49,117 @@ const CITIES = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// City picker
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+function gradientForName(name = "") {
+  const palettes = [
+    ["#0A1500", "#182800"], ["#000A10", "#001828"], ["#100010", "#200030"],
+    ["#100500", "#220E00"], ["#001510", "#002820"], ["#0A0005", "#180012"],
+    ["#080A00", "#141800"], ["#000818", "#000E28"],
+  ];
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
+  const [from, to] = palettes[Math.abs(h) % palettes.length];
+  return { from, to };
+}
+
+function abbrev(name = "") {
+  const words = name.trim().split(/\s+/);
+  if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
+  return words.slice(0, 2).map(w => w[0]).join("").toUpperCase();
+}
+
+function fmtDist(km) {
+  if (km == null) return null;
+  return km < 1 ? `${(km * 1000).toFixed(0)}m` : `${km.toFixed(1)} km`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SVG icons
+// ─────────────────────────────────────────────────────────────────────────────
+const Icon = {
+  search: (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <circle cx="6.5" cy="6.5" r="5" stroke={T.t3} strokeWidth="1.4"/>
+      <path d="M10.5 10.5L14 14" stroke={T.t3} strokeWidth="1.4" strokeLinecap="round"/>
+    </svg>
+  ),
+  filter: (
+    <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+      <rect x="0" y="0"   width="16" height="1.8" rx="0.9" fill="#000"/>
+      <rect x="2.5" y="5" width="11" height="1.8" rx="0.9" fill="#000"/>
+      <rect x="5" y="10"  width="6"  height="1.8" rx="0.9" fill="#000"/>
+    </svg>
+  ),
+  bell: (
+    <svg width="16" height="17" viewBox="0 0 16 18" fill="none">
+      <path d="M8 1C8.55 1 9 1.45 9 2V2.65C11.5 3.1 13.5 5.3 13.5 8V12.5L15 14H1L2.5 12.5V8C2.5 5.3 4.5 3.1 7 2.65V2C7 1.45 7.45 1 8 1Z" stroke={T.t2} strokeWidth="1.4" fill="none"/>
+      <path d="M6 15C6.4 15.9 7.1 16.5 8 16.5C8.9 16.5 9.6 15.9 10 15" stroke={T.t2} strokeWidth="1.4" strokeLinecap="round"/>
+    </svg>
+  ),
+  pin: (
+    <svg width="10" height="12" viewBox="0 0 10 12" fill="none">
+      <path d="M5 0C2.8 0 1 1.8 1 4C1 7 5 12 5 12C5 12 9 7 9 4C9 1.8 7.2 0 5 0Z" fill={T.lime}/>
+      <circle cx="5" cy="4" r="1.5" fill="#0A0A0A"/>
+    </svg>
+  ),
+  heart: (
+    <svg width="13" height="12" viewBox="0 0 14 13" fill="none">
+      <path d="M7 12L1.5 6.5C0.4 5.4 0.4 3.6 1.5 2.5C2.6 1.4 4.4 1.4 5.5 2.5L7 4L8.5 2.5C9.6 1.4 11.4 1.4 12.5 2.5C13.6 3.6 13.6 5.4 12.5 6.5L7 12Z" stroke="rgba(255,255,255,0.3)" strokeWidth="1.3" fill="none"/>
+    </svg>
+  ),
+  chevron: (
+    <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
+      <path d="M7 1L11 5L7 9M11 5H1" stroke={T.t3} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  ),
+  star: (
+    <svg width="8" height="8" viewBox="0 0 10 10" fill={T.lime}>
+      <path d="M5 0.5L6.2 3.6H9.5L6.9 5.6L7.9 8.8L5 6.9L2.1 8.8L3.1 5.6L0.5 3.6H3.8L5 0.5Z"/>
+    </svg>
+  ),
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// City picker sheet
 // ─────────────────────────────────────────────────────────────────────────────
 function CityPicker({ onSelect }) {
   return (
     <div style={{
-      position:"fixed",inset:0,zIndex:300,
-      background:"rgba(0,0,0,0.28)",
-      display:"flex",alignItems:"flex-end",
+      position:"fixed", inset:0, zIndex:300,
+      background:"rgba(0,0,0,0.72)",
+      display:"flex", alignItems:"flex-end",
     }}>
       <div style={{
-        width:"100%",background:T.surface,
-        borderRadius:"24px 24px 0 0",
+        width:"100%", background:T.s2,
+        borderRadius:"22px 22px 0 0",
         padding:"20px 20px 52px",
-        boxShadow:"0 -8px 32px rgba(0,0,0,0.08)",
+        border:`1px solid ${T.border}`,
+        borderBottom:"none",
+        animation:"slideUp .25s ease-out",
+        fontFamily:"'Inter',sans-serif",
       }}>
-        <div style={{width:36,height:4,borderRadius:2,background:T.border,margin:"0 auto 24px"}}/>
-        <p style={{fontSize:18,fontWeight:700,color:T.text,marginBottom:4}}>Choose your city</p>
-        <p style={{fontSize:13,color:T.sub,marginBottom:20}}>We'll show outlets near this city</p>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          {CITIES.map(city=>(
-            <button key={city.label} onClick={()=>onSelect(city)} style={{
-              padding:"14px 16px",borderRadius:14,cursor:"pointer",
-              border:`1.5px solid ${T.border}`,background:"#F9FAFB",
-              color:T.text,fontSize:15,fontWeight:500,textAlign:"left",
-            }}>{city.label}</button>
+        <div style={{ width:36, height:4, borderRadius:2, background:T.border2, margin:"0 auto 24px" }}/>
+        <p style={{ fontSize:17, fontWeight:800, color:T.t1, marginBottom:3, letterSpacing:"-0.3px" }}>
+          Choose your city
+        </p>
+        <p style={{ fontSize:12, color:T.t3, marginBottom:20 }}>
+          We'll show outlets near this location
+        </p>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+          {CITIES.map(city => (
+            <button key={city.label} onClick={() => onSelect(city)} style={{
+              padding:"13px 16px", borderRadius:12, cursor:"pointer",
+              border:`1px solid ${T.border}`, background:T.s3,
+              color:T.t1, fontSize:13, fontWeight:700, textAlign:"left",
+              fontFamily:"'Inter',sans-serif",
+              transition:"border-color .15s",
+            }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = T.lime + "44"; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; }}
+            >
+              {city.label}
+            </button>
           ))}
         </div>
       </div>
@@ -92,13 +168,13 @@ function CityPicker({ onSelect }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Horizontal scroll row with snap
+// Layout helpers
 // ─────────────────────────────────────────────────────────────────────────────
-function SwipeRow({ children, gap=12, pl=20, pr=20 }) {
+function SwipeRow({ children, gap = 12, pl = 20, pr = 20 }) {
   return (
     <div style={{
-      display:"flex",overflowX:"auto",gap,
-      paddingLeft:pl,paddingRight:pr,paddingBottom:6,
+      display:"flex", overflowX:"auto", gap,
+      paddingLeft:pl, paddingRight:pr, paddingBottom:6,
       scrollSnapType:"x mandatory",
       WebkitOverflowScrolling:"touch",
       scrollbarWidth:"none",
@@ -108,26 +184,25 @@ function SwipeRow({ children, gap=12, pl=20, pr=20 }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Section header
-// ─────────────────────────────────────────────────────────────────────────────
-function Section({ title, subtitle, onSeeAll, children }) {
+function Section({ title, onSeeAll, children }) {
   return (
-    <div style={{marginBottom:32}}>
+    <div style={{ marginBottom:28 }}>
       <div style={{
-        display:"flex",justifyContent:"space-between",
-        alignItems:"flex-end",marginBottom:14,
-        padding:"0 20px",
+        display:"flex", justifyContent:"space-between", alignItems:"center",
+        marginBottom:12, padding:"0 20px",
       }}>
-        <div>
-          <p style={{fontSize:18,fontWeight:800,color:T.text,letterSpacing:-0.3}}>{title}</p>
-          {subtitle && <p style={{fontSize:12,color:T.sub,marginTop:2}}>{subtitle}</p>}
-        </div>
+        <p style={{ fontSize:14, fontWeight:800, color:T.t1, letterSpacing:"-0.2px", margin:0 }}>
+          {title}
+        </p>
         {onSeeAll && (
           <button onClick={onSeeAll} style={{
-            background:"none",border:"none",cursor:"pointer",
-            fontSize:13,color:T.purple,fontWeight:700,
-          }}>See all</button>
+            background:"none", border:"none", cursor:"pointer",
+            fontSize:11, color:T.t3, fontWeight:600,
+            display:"flex", alignItems:"center", gap:4,
+            fontFamily:"'Inter',sans-serif",
+          }}>
+            View all {Icon.chevron}
+          </button>
         )}
       </div>
       {children}
@@ -136,383 +211,333 @@ function Section({ title, subtitle, onSeeAll, children }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Category tile (Popular row)
-// ─────────────────────────────────────────────────────────────────────────────
-function CategoryTile({ cat, active, onClick }) {
-  return (
-    <div onClick={onClick} style={{
-      display:"flex",flexDirection:"column",alignItems:"center",
-      gap:7,cursor:"pointer",flexShrink:0,scrollSnapAlign:"start",
-      userSelect:"none",
-    }}>
-      <div style={{
-        width:64,height:64,borderRadius:20,
-        background: active
-          ? `linear-gradient(135deg,${cat.from},${cat.to})`
-          : T.surface,
-        border: active ? "none" : `1.5px solid ${T.border}`,
-        display:"flex",alignItems:"center",justifyContent:"center",
-        fontSize:28,
-        boxShadow: active ? `0 6px 18px ${cat.from}44` : T.shadow,
-        transition:"all 0.18s ease",
-      }}>
-        {cat.emoji}
-      </div>
-      <span style={{
-        fontSize:11,fontWeight:active?700:500,
-        color:active?cat.from:T.sub,
-        transition:"color 0.18s",
-      }}>{cat.label}</span>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Outlet card (standard — portrait)
-// ─────────────────────────────────────────────────────────────────────────────
-function OutletCard({ gym, onClick }) {
-  const {from,to} = gradientForName(gym.name);
-  const initial = (gym.name||"?")[0].toUpperCase();
-  const isOpen = gym.open_now;
-
-  return (
-    <div onClick={onClick} style={{
-      width:170,flexShrink:0,
-      borderRadius:T.rad,overflow:"hidden",
-      background:T.surface,border:`1px solid ${T.border}`,
-      cursor:"pointer",boxShadow:T.shadow,
-      scrollSnapAlign:"start",
-      transition:"transform 0.15s,box-shadow 0.15s",
-    }}
-      onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow=T.shadowMd;}}
-      onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow=T.shadow;}}
-    >
-      {/* Gradient top strip */}
-      <div style={{height:5,background:`linear-gradient(90deg,${from},${to})`}}/>
-
-      <div style={{padding:"14px 13px 13px"}}>
-        {/* Icon + badges */}
-        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:11}}>
-          <div style={{
-            width:46,height:46,borderRadius:14,flexShrink:0,
-            background:`linear-gradient(135deg,${from},${to})`,
-            display:"flex",alignItems:"center",justifyContent:"center",
-            boxShadow:`0 4px 12px ${from}33`,
-          }}>
-            <span style={{fontSize:20,fontWeight:900,color:"rgba(255,255,255,0.92)",lineHeight:1}}>{initial}</span>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
-            {gym.is_sponsored && (
-              <span style={{
-                fontSize:8,fontWeight:800,letterSpacing:"0.06em",
-                padding:"2px 6px",borderRadius:4,
-                background:"#FEF3C7",color:"#D97706",border:"1px solid #FDE68A",
-              }}>AD</span>
-            )}
-            {gym.is_premium && (
-              <span style={{
-                fontSize:8,fontWeight:800,letterSpacing:"0.06em",
-                padding:"2px 6px",borderRadius:4,
-                background:T.purpleL,color:T.purple,
-              }}>PRO</span>
-            )}
-          </div>
-        </div>
-
-        {/* Name */}
-        <p style={{
-          fontSize:13,fontWeight:700,color:T.text,
-          marginBottom:3,lineHeight:"1.25",
-          overflow:"hidden",display:"-webkit-box",
-          WebkitLineClamp:2,WebkitBoxOrient:"vertical",
-        }}>{gym.name}</p>
-
-        {/* Chain badge */}
-        {gym.chain_name && (
-          <p style={{
-            fontSize:10,color:T.purple,fontWeight:700,
-            marginBottom:3,
-          }}>{gym.chain_name}</p>
-        )}
-
-        {/* Address */}
-        <p style={{
-          fontSize:11,color:T.sub,marginBottom:10,
-          whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
-        }}>{gym.address?.split(",")[0]||"—"}</p>
-
-        {/* Footer row */}
-        <div style={{
-          display:"flex",alignItems:"center",justifyContent:"space-between",
-          paddingTop:9,borderTop:`1px solid ${T.border}`,
-        }}>
-          <span style={{fontSize:12,color:"#F59E0B",fontWeight:700}}>
-            ★ {gym.rating?.toFixed(1)??"—"}
-          </span>
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
-            {isOpen != null && (
-              <span style={{
-                fontSize:9,fontWeight:700,
-                color: isOpen?"#16A34A":"#DC2626",
-              }}>{isOpen?"OPEN":"CLOSED"}</span>
-            )}
-            {gym.distance_km!=null && (
-              <span style={{fontSize:11,color:T.sub}}>
-                {gym.distance_km<1
-                  ?`${(gym.distance_km*1000).toFixed(0)}m`
-                  :`${gym.distance_km.toFixed(1)}km`}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Sponsored card (wider, stands out)
-// ─────────────────────────────────────────────────────────────────────────────
-function SponsoredCard({ gym, onClick }) {
-  const {from,to} = gradientForName(gym.name);
-  const initial = (gym.name||"?")[0].toUpperCase();
-
-  return (
-    <div onClick={onClick} style={{
-      width:"calc(100vw - 48px)",maxWidth:360,flexShrink:0,
-      borderRadius:T.rad,overflow:"hidden",
-      background:T.surface,
-      border:`1.5px solid #FDE68A`,
-      cursor:"pointer",
-      boxShadow:"0 4px 20px rgba(217,119,6,0.12)",
-      scrollSnapAlign:"start",
-      transition:"transform 0.15s,box-shadow 0.15s",
-    }}
-      onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow="0 8px 28px rgba(217,119,6,0.20)";}}
-      onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="0 4px 20px rgba(217,119,6,0.12)";}}
-    >
-      {/* Gradient strip */}
-      <div style={{height:6,background:`linear-gradient(90deg,${from},${to})`}}/>
-
-      <div style={{padding:"14px 16px 14px"}}>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          {/* Icon */}
-          <div style={{
-            width:52,height:52,borderRadius:15,flexShrink:0,
-            background:`linear-gradient(135deg,${from},${to})`,
-            display:"flex",alignItems:"center",justifyContent:"center",
-            boxShadow:`0 4px 14px ${from}44`,
-          }}>
-            <span style={{fontSize:24,fontWeight:900,color:"rgba(255,255,255,0.92)",lineHeight:1}}>{initial}</span>
-          </div>
-          {/* Info */}
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-              <p style={{
-                fontSize:14,fontWeight:800,color:T.text,
-                whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
-              }}>{gym.name}</p>
-              <span style={{
-                fontSize:8,fontWeight:800,letterSpacing:"0.06em",
-                padding:"2px 6px",borderRadius:4,flexShrink:0,
-                background:"#FEF3C7",color:"#D97706",border:"1px solid #FDE68A",
-              }}>SPONSORED</span>
-            </div>
-            {gym.chain_name && (
-              <p style={{fontSize:11,color:T.purple,fontWeight:700,marginBottom:2}}>{gym.chain_name}</p>
-            )}
-            <p style={{fontSize:12,color:T.sub,marginBottom:6}}>
-              {gym.address?.split(",")[0]}
-            </p>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:13,fontWeight:700,color:"#F59E0B"}}>★ {gym.rating?.toFixed(1)}</span>
-              {gym.distance_km!=null && (
-                <span style={{fontSize:12,color:T.sub}}>
-                  {gym.distance_km<1?`${(gym.distance_km*1000).toFixed(0)}m`:`${gym.distance_km.toFixed(1)}km`}
-                </span>
-              )}
-              {gym.open_now!=null && (
-                <span style={{fontSize:10,fontWeight:700,color:gym.open_now?"#16A34A":"#DC2626"}}>
-                  {gym.open_now?"Open Now":"Closed"}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        {/* Tags */}
-        {gym.tags?.length>0 && (
-          <div style={{display:"flex",gap:5,marginTop:10,flexWrap:"wrap"}}>
-            {gym.tags.slice(0,4).map(t=>(
-              <span key={t} style={{
-                fontSize:10,fontWeight:600,
-                padding:"3px 8px",borderRadius:999,
-                background:T.purpleL,color:T.purple,
-              }}>{t}</span>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Premium card (landscape, wider)
-// ─────────────────────────────────────────────────────────────────────────────
-function PremiumCard({ gym, onClick }) {
-  const {from,to} = gradientForName(gym.name);
-  const initial = (gym.name||"?")[0].toUpperCase();
-
-  return (
-    <div onClick={onClick} style={{
-      width:"calc(100vw - 80px)",maxWidth:320,flexShrink:0,
-      borderRadius:T.rad,overflow:"hidden",
-      background:T.surface,
-      border:`1.5px solid ${T.purpleL}`,
-      cursor:"pointer",
-      boxShadow:"0 4px 20px rgba(124,58,237,0.10)",
-      scrollSnapAlign:"start",
-      transition:"transform 0.15s,box-shadow 0.15s",
-    }}
-      onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow="0 8px 28px rgba(124,58,237,0.18)";}}
-      onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="0 4px 20px rgba(124,58,237,0.10)";}}
-    >
-      <div style={{height:6,background:`linear-gradient(90deg,${from},${to})`}}/>
-      <div style={{padding:"13px 14px 13px"}}>
-        <div style={{display:"flex",alignItems:"center",gap:11}}>
-          <div style={{
-            width:48,height:48,borderRadius:14,flexShrink:0,
-            background:`linear-gradient(135deg,${from},${to})`,
-            display:"flex",alignItems:"center",justifyContent:"center",
-            boxShadow:`0 4px 12px ${from}44`,
-          }}>
-            <span style={{fontSize:22,fontWeight:900,color:"rgba(255,255,255,0.9)",lineHeight:1}}>{initial}</span>
-          </div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-              <p style={{
-                fontSize:13,fontWeight:800,color:T.text,
-                whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
-              }}>{gym.name}</p>
-              <span style={{
-                fontSize:8,fontWeight:800,letterSpacing:"0.06em",
-                padding:"2px 6px",borderRadius:4,flexShrink:0,
-                background:`linear-gradient(135deg,${from},${to})`,color:"#fff",
-              }}>PRO</span>
-            </div>
-            {gym.chain_name && (
-              <p style={{fontSize:10,color:T.purple,fontWeight:700,marginBottom:2}}>{gym.chain_name}</p>
-            )}
-            <p style={{fontSize:11,color:T.sub,marginBottom:5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-              {gym.address?.split(",")[0]}
-            </p>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{fontSize:12,fontWeight:700,color:"#F59E0B"}}>★ {gym.rating?.toFixed(1)??'—'}</span>
-              {gym.distance_km!=null && (
-                <span style={{fontSize:11,color:T.sub}}>
-                  {gym.distance_km<1?`${(gym.distance_km*1000).toFixed(0)}m`:`${gym.distance_km.toFixed(1)}km`}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        {gym.tags?.length>0 && (
-          <div style={{display:"flex",gap:5,marginTop:10,flexWrap:"wrap"}}>
-            {gym.tags.slice(0,3).map(t=>(
-              <span key={t} style={{
-                fontSize:10,fontWeight:600,
-                padding:"3px 8px",borderRadius:999,
-                background:T.purpleL,color:T.purple,
-              }}>{t}</span>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Chain card (brand card for the "Chains near you" row)
-// ─────────────────────────────────────────────────────────────────────────────
-function ChainCard({ chain, onClick }) {
-  const {from,to} = gradientForName(chain.chain_name);
-  const initial = (chain.chain_name||"?")[0].toUpperCase();
-
-  return (
-    <div onClick={onClick} style={{
-      width:150,flexShrink:0,
-      borderRadius:T.rad,overflow:"hidden",
-      background:T.surface,border:`1px solid ${T.border}`,
-      cursor:"pointer",boxShadow:T.shadow,
-      scrollSnapAlign:"start",
-      transition:"transform 0.15s,box-shadow 0.15s",
-    }}
-      onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow=T.shadowMd;}}
-      onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow=T.shadow;}}
-    >
-      {/* Full gradient header — more visual for brands */}
-      <div style={{
-        height:72,
-        background:`linear-gradient(135deg,${from},${to})`,
-        display:"flex",alignItems:"center",justifyContent:"center",
-        position:"relative",
-      }}>
-        <span style={{
-          fontSize:32,fontWeight:900,
-          color:"rgba(255,255,255,0.22)",
-          userSelect:"none",letterSpacing:-2,
-        }}>{initial}</span>
-        {/* Branch count badge */}
-        <span style={{
-          position:"absolute",top:8,right:8,
-          fontSize:9,fontWeight:800,
-          padding:"2px 7px",borderRadius:20,
-          background:"rgba(0,0,0,0.25)",color:"#fff",
-          backdropFilter:"blur(4px)",
-        }}>{chain.branch_count} {chain.branch_count===1?"branch":"branches"}</span>
-      </div>
-
-      <div style={{padding:"10px 11px 11px"}}>
-        <p style={{
-          fontSize:12,fontWeight:800,color:T.text,
-          marginBottom:3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
-        }}>{chain.chain_name}</p>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          {chain.avg_rating && (
-            <span style={{fontSize:11,fontWeight:700,color:"#F59E0B"}}>★ {chain.avg_rating}</span>
-          )}
-          <span style={{fontSize:10,color:T.sub}}>
-            {chain.nearest_km<1
-              ?`${(chain.nearest_km*1000).toFixed(0)}m`
-              :`${chain.nearest_km.toFixed(1)}km`}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Skeleton card
 // ─────────────────────────────────────────────────────────────────────────────
-function Skel({ w=170, h=200 }) {
+function Skel({ w = 150, h = 175 }) {
   return (
     <div style={{
-      width:w,flexShrink:0,borderRadius:T.rad,overflow:"hidden",
-      background:T.surface,border:`1px solid ${T.border}`,scrollSnapAlign:"start",
+      width:w, height:h, flexShrink:0, borderRadius:T.rad,
+      background:T.s2, border:`1px solid ${T.border}`,
+      scrollSnapAlign:"start", overflow:"hidden",
     }}>
-      <div style={{height:5,background:"#E5E7EB"}}/>
-      <div style={{padding:14}}>
+      <div style={{
+        height:"100%",
+        background:`linear-gradient(90deg, ${T.s2} 25%, ${T.s3} 50%, ${T.s2} 75%)`,
+        backgroundSize:"200% 100%",
+        animation:"shimmer 1.5s infinite",
+      }}/>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hero card — Sponsored (full-width)
+// ─────────────────────────────────────────────────────────────────────────────
+function HeroCard({ gym, onClick }) {
+  const { from, to } = gradientForName(gym.name);
+  const dist = fmtDist(gym.distance_km);
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        width:"calc(100vw - 52px)", maxWidth:300,
+        height:160, flexShrink:0, borderRadius:T.rad,
+        overflow:"hidden", position:"relative", cursor:"pointer",
+        scrollSnapAlign:"start",
+        border:`1px solid ${T.border}`,
+      }}
+    >
+      <div style={{
+        position:"absolute", inset:0,
+        background:`linear-gradient(145deg, ${from} 0%, ${to} 100%)`,
+      }}/>
+      <div style={{
+        position:"absolute", inset:0,
+        background:"radial-gradient(circle at 65% 25%, rgba(122,222,0,0.06) 0%, transparent 55%)",
+      }}/>
+      <div style={{
+        position:"absolute", inset:0,
+        background:"linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.1) 55%, transparent 100%)",
+      }}/>
+
+      {/* Sponsored badge */}
+      <div style={{
+        position:"absolute", top:12, left:12,
+        background:"rgba(122,222,0,0.12)", border:"1px solid rgba(122,222,0,0.22)",
+        color:T.lime, fontSize:9, fontWeight:800,
+        padding:"3px 10px", borderRadius:20, letterSpacing:"0.8px",
+        textTransform:"uppercase",
+      }}>Sponsored</div>
+
+      {/* Chain badge */}
+      {gym.chain_name && (
         <div style={{
-          width:46,height:46,borderRadius:14,marginBottom:11,
-          background:"linear-gradient(90deg,#E5E7EB 25%,#F3F4F6 50%,#E5E7EB 75%)",
-          backgroundSize:"200% 100%",animation:"shimmer 1.4s infinite",
+          position:"absolute", top:12, right:12,
+          background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)",
+          color:"rgba(255,255,255,0.6)", fontSize:9, fontWeight:700,
+          padding:"3px 8px", borderRadius:7, letterSpacing:"0.4px",
+          textTransform:"uppercase",
+        }}>{gym.chain_name}</div>
+      )}
+
+      {/* Content */}
+      <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:"12px 14px" }}>
+        <p style={{ fontSize:15, fontWeight:800, color:"#fff", letterSpacing:"-0.3px", lineHeight:1.2, marginBottom:3 }}>
+          {gym.name}
+        </p>
+        <p style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginBottom:8, fontWeight:500 }}>
+          {gym.address?.split(",")[0]}
+        </p>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          {gym.rating != null && (
+            <span style={{ display:"flex", alignItems:"center", gap:4, fontSize:12, fontWeight:700, color:T.lime }}>
+              {Icon.star} {gym.rating.toFixed(1)}
+            </span>
+          )}
+          {dist && (
+            <>
+              <span style={{ width:3, height:3, borderRadius:"50%", background:"rgba(255,255,255,0.2)", display:"inline-block" }}/>
+              <span style={{ fontSize:11, color:"rgba(255,255,255,0.35)", fontWeight:500 }}>{dist}</span>
+            </>
+          )}
+          <div style={{ marginLeft:"auto" }}>
+            <span style={{
+              background:T.lime, color:"#000",
+              fontSize:10, fontWeight:800, padding:"5px 14px", borderRadius:20, letterSpacing:"0.3px",
+            }}>Book</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chain card (lettermark)
+// ─────────────────────────────────────────────────────────────────────────────
+function ChainCard({ chain, onClick }) {
+  const letters = abbrev(chain.chain_name);
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        width:118, flexShrink:0, borderRadius:T.rad,
+        background:T.s2, border:`1px solid ${T.border}`,
+        padding:"14px 12px", scrollSnapAlign:"start",
+        cursor:"pointer", textAlign:"center",
+        position:"relative", overflow:"hidden",
+        transition:"border-color .15s",
+      }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = T.border2; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; }}
+    >
+      {/* Lettermark */}
+      <div style={{
+        width:46, height:46, borderRadius:13,
+        background:T.s3, border:`1px solid ${T.border2}`,
+        display:"flex", alignItems:"center", justifyContent:"center",
+        margin:"0 auto 9px",
+      }}>
+        <span style={{
+          fontSize: letters.length > 2 ? 11 : 14,
+          fontWeight:900, color:T.t1, letterSpacing:"-0.5px",
+        }}>{letters}</span>
+      </div>
+
+      <p style={{
+        fontSize:11, fontWeight:700, color:T.t1,
+        marginBottom:2, whiteSpace:"nowrap",
+        overflow:"hidden", textOverflow:"ellipsis",
+      }}>{chain.chain_name}</p>
+      <p style={{ fontSize:10, color:T.t3, marginBottom:8 }}>
+        {chain.branch_count} {chain.branch_count === 1 ? "branch" : "branches"}
+      </p>
+
+      <div style={{
+        display:"inline-flex", alignItems:"center", gap:4,
+        background:T.limeDim, border:"1px solid rgba(122,222,0,0.12)",
+        color:T.lime, fontSize:10, fontWeight:700,
+        padding:"3px 9px", borderRadius:20,
+      }}>
+        {Icon.star}
+        {chain.avg_rating ? parseFloat(chain.avg_rating).toFixed(1) : "—"}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Outlet card — standard
+// ─────────────────────────────────────────────────────────────────────────────
+function OutletCard({ gym, onClick }) {
+  const { from, to } = gradientForName(gym.name);
+  const dist = fmtDist(gym.distance_km);
+  const cat = gym.category?.toUpperCase() || "GYM";
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        width:148, flexShrink:0, borderRadius:T.rad,
+        background:T.s2, border:`1px solid ${T.border}`,
+        overflow:"hidden", cursor:"pointer", scrollSnapAlign:"start",
+        transition:"border-color .15s",
+      }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = T.border2; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; }}
+    >
+      {/* Thumb */}
+      <div style={{
+        height:88, position:"relative",
+        background:`linear-gradient(145deg, ${from} 0%, ${to} 100%)`,
+      }}>
+        <div style={{
+          position:"absolute", inset:0,
+          background:"linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 50%)",
         }}/>
-        <div style={{height:12,width:"80%",borderRadius:6,background:"#E5E7EB",marginBottom:6}}/>
-        <div style={{height:10,width:"55%",borderRadius:6,background:"#F3F4F6",marginBottom:10}}/>
-        <div style={{height:1,background:"#F3F4F6",marginBottom:8}}/>
-        <div style={{height:10,width:"40%",borderRadius:6,background:"#F3F4F6"}}/>
+        {/* Fav */}
+        <div style={{
+          position:"absolute", top:7, right:7,
+          width:24, height:24, borderRadius:7,
+          background:"rgba(0,0,0,0.4)", border:"1px solid rgba(255,255,255,0.07)",
+          display:"flex", alignItems:"center", justifyContent:"center",
+        }}>
+          {Icon.heart}
+        </div>
+        {/* Category label */}
+        <div style={{
+          position:"absolute", bottom:7, left:7,
+          background:"rgba(0,0,0,0.5)", border:"1px solid rgba(255,255,255,0.07)",
+          color:"rgba(255,255,255,0.6)", fontSize:8, fontWeight:700,
+          padding:"2px 6px", borderRadius:5, letterSpacing:"0.5px",
+        }}>{cat}</div>
+        {/* Sponsored micro badge */}
+        {gym.is_sponsored && (
+          <div style={{
+            position:"absolute", top:7, left:7,
+            background:T.limeDim, border:"1px solid rgba(122,222,0,0.2)",
+            color:T.lime, fontSize:8, fontWeight:800,
+            padding:"2px 6px", borderRadius:5,
+          }}>AD</div>
+        )}
+      </div>
+
+      {/* Body */}
+      <div style={{ padding:"9px 10px 11px" }}>
+        <p style={{
+          fontSize:12, fontWeight:700, color:T.t1, lineHeight:1.3,
+          letterSpacing:"-0.2px", marginBottom:2,
+          overflow:"hidden", display:"-webkit-box",
+          WebkitLineClamp:2, WebkitBoxOrient:"vertical",
+        }}>{gym.name}</p>
+        {gym.chain_name && (
+          <p style={{ fontSize:9, color:T.lime, fontWeight:700, marginBottom:2, letterSpacing:"0.3px", textTransform:"uppercase" }}>
+            {gym.chain_name}
+          </p>
+        )}
+        <p style={{
+          fontSize:9, color:T.t3, marginBottom:7,
+          whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+        }}>
+          {gym.address?.split(",")[0] || "—"}
+        </p>
+
+        {/* Footer */}
+        <div style={{
+          display:"flex", alignItems:"center", justifyContent:"space-between",
+          paddingTop:7, borderTop:`1px solid ${T.border}`,
+        }}>
+          <span style={{ display:"flex", alignItems:"center", gap:3, fontSize:11, fontWeight:700, color:T.t1 }}>
+            {Icon.star} {gym.rating?.toFixed(1) ?? "—"}
+          </span>
+          <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+            {gym.open_now != null && (
+              <span style={{ fontSize:8, fontWeight:700, color: gym.open_now ? "#4ADE80" : "#F87171" }}>
+                {gym.open_now ? "OPEN" : "CLOSED"}
+              </span>
+            )}
+            {dist && <span style={{ fontSize:9, color:T.t3 }}>{dist}</span>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Premium card — wider, lime top accent
+// ─────────────────────────────────────────────────────────────────────────────
+function PremiumCard({ gym, onClick }) {
+  const { from, to } = gradientForName(gym.name);
+  const dist = fmtDist(gym.distance_km);
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        width:"calc(100vw - 80px)", maxWidth:215,
+        flexShrink:0, borderRadius:T.rad, overflow:"hidden",
+        background:T.s2, border:`1px solid ${T.border}`,
+        cursor:"pointer", scrollSnapAlign:"start",
+        transition:"border-color .15s",
+      }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = T.lime + "40"; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; }}
+    >
+      {/* Lime top accent line */}
+      <div style={{ height:2, background:T.lime, opacity:0.7 }}/>
+
+      {/* Thumb */}
+      <div style={{
+        height:108, position:"relative",
+        background:`linear-gradient(145deg, ${from} 0%, ${to} 100%)`,
+      }}>
+        <div style={{
+          position:"absolute", inset:0,
+          background:"radial-gradient(circle at 60% 25%, rgba(122,222,0,0.05) 0%, transparent 55%)",
+        }}/>
+        <div style={{
+          position:"absolute", inset:0,
+          background:"linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 50%)",
+        }}/>
+        <div style={{
+          position:"absolute", top:10, left:10,
+          background:T.lime, color:"#000",
+          fontSize:9, fontWeight:900, padding:"4px 10px",
+          borderRadius:20, letterSpacing:"0.7px", textTransform:"uppercase",
+        }}>Premium</div>
+      </div>
+
+      {/* Body */}
+      <div style={{ padding:"11px 12px 13px" }}>
+        <p style={{
+          fontSize:12, fontWeight:800, color:T.t1,
+          letterSpacing:"-0.2px", lineHeight:1.3, marginBottom:7,
+        }}>{gym.name}</p>
+
+        {gym.tags?.length > 0 && (
+          <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:9 }}>
+            {gym.tags.slice(0, 4).map(tag => (
+              <span key={tag} style={{
+                background:T.s3, border:`1px solid ${T.border2}`,
+                color:T.t3, fontSize:8, fontWeight:600,
+                padding:"3px 7px", borderRadius:5, letterSpacing:"0.3px",
+              }}>{tag}</span>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <span style={{ fontSize:12, fontWeight:800, color:T.lime, letterSpacing:"-0.3px" }}>
+            {gym.price_label || "From ₹1,499"}
+          </span>
+          <span style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:T.t2, fontWeight:600 }}>
+            {Icon.star} {gym.rating?.toFixed(1) ?? "—"}
+            {dist && <span style={{ color:T.t3, fontSize:9 }}> · {dist}</span>}
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -523,23 +548,20 @@ function Skel({ w=170, h=200 }) {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function Discovery() {
   const navigate = useNavigate();
-  const [gyms,     setGyms]     = useState([]);
-  const [chains,   setChains]   = useState([]);
-  const [loading,  setLoading]  = useState(true);
+  const [gyms,           setGyms]           = useState([]);
+  const [chains,         setChains]         = useState([]);
+  const [loading,        setLoading]        = useState(true);
   const [activeCategory, setActiveCategory] = useState(null);
-  const [location, setLocation] = useState(null);
+  const [location,       setLocation]       = useState(null);
   const [showCityPicker, setShowCityPicker] = useState(false);
-  const [firstName, setFirstName] = useState("");
-  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [firstName,      setFirstName]      = useState("");
 
-  // User first name
   useEffect(() => {
     getCurrentUser()
-      .then(u => setFirstName((u?.full_name||u?.username||"").split(" ")[0]))
-      .catch(()=>{});
+      .then(u => setFirstName((u?.full_name || u?.username || "").split(" ")[0]))
+      .catch(() => {});
   }, []);
 
-  // GPS on mount
   useEffect(() => {
     if (!navigator.geolocation) { setShowCityPicker(true); return; }
     navigator.geolocation.getCurrentPosition(
@@ -549,18 +571,17 @@ export default function Discovery() {
     );
   }, []);
 
-  // Fetch gyms + chains together
   const loadData = useCallback(async (loc) => {
     if (!loc) return;
     setLoading(true);
     try {
       const [gymData, chainData] = await Promise.all([
         fetchGyms({ lat: loc.lat, lng: loc.lng, radiusKm: 8, sortBy: "distance", limit: 50 }),
-        fetchChains(loc.lat, loc.lng, 15).catch(()=>[]),
+        fetchChains(loc.lat, loc.lng, 15).catch(() => []),
       ]);
       setGyms(gymData.filter(g => !g.rating || g.rating >= 3));
       setChains(chainData);
-    } catch(e) {
+    } catch (e) {
       console.error("[Discovery] load error:", e);
     } finally {
       setLoading(false);
@@ -569,26 +590,26 @@ export default function Discovery() {
 
   useEffect(() => { loadData(location); }, [location, loadData]);
 
-  // Filtered gyms
   const filtered = activeCategory
-    ? gyms.filter(g => g.category === activeCategory || g.tags?.some(t=>t.toLowerCase().includes(activeCategory)))
+    ? gyms.filter(g => g.category === activeCategory || g.tags?.some(t => t.toLowerCase().includes(activeCategory)))
     : gyms;
 
-  const sponsored    = filtered.filter(g => g.is_sponsored).sort((a,b) => a.sponsored_rank - b.sponsored_rank);
-  const premium      = filtered.filter(g => (g.is_premium || g.tags?.includes("Premium")) && !g.is_sponsored);
-  const recommended  = filtered.filter(g => !g.is_premium && !g.is_sponsored && !g.tags?.includes("Premium"));
-  const nearby       = filtered.slice(0, 12);
+  const sponsored   = filtered.filter(g => g.is_sponsored).sort((a, b) => a.sponsored_rank - b.sponsored_rank);
+  const premium     = filtered.filter(g => (g.is_premium || g.tags?.includes("Premium")) && !g.is_sponsored);
+  const recommended = filtered.filter(g => !g.is_premium && !g.is_sponsored && !g.tags?.includes("Premium"));
+  const nearby      = filtered.slice(0, 12);
 
-  // Time-based greeting
   const hr = new Date().getHours();
-  const greeting = hr<12 ? "Good Morning" : hr<17 ? "Good Afternoon" : "Good Evening";
+  const greeting = hr < 12 ? "Good morning" : hr < 17 ? "Good afternoon" : "Good evening";
 
   return (
     <>
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+        * { box-sizing:border-box; -webkit-font-smoothing:antialiased; }
         @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-        *{-webkit-overflow-scrolling:touch}
-        ::-webkit-scrollbar{display:none}
+        @keyframes slideUp { from{transform:translateY(100%);opacity:0} to{transform:translateY(0);opacity:1} }
+        ::-webkit-scrollbar { display: none; }
       `}</style>
 
       {showCityPicker && (
@@ -598,144 +619,157 @@ export default function Discovery() {
         }}/>
       )}
 
-      <div style={{background:T.bg,minHeight:"100vh",paddingBottom:80}}>
+      <div style={{
+        background:T.bg, minHeight:"100vh", paddingBottom:88,
+        fontFamily:"'Inter', -apple-system, sans-serif",
+        color:T.t1,
+      }}>
 
-        {/* ── Sticky header ─────────────────────────────────────────── */}
+        {/* ── Sticky header ── */}
         <div style={{
-          position:"sticky",top:0,zIndex:10,
-          background:T.surface,
+          position:"sticky", top:0, zIndex:20,
+          background:T.bg,
           borderBottom:`1px solid ${T.border}`,
-          padding:"16px 20px 14px",
+          padding:"16px 20px 0",
         }}>
-          {/* Row 1: Avatar + greeting + actions */}
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div style={{display:"flex",alignItems:"center",gap:11}}>
+
+          {/* Row 1: greeting + controls */}
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
+            <div>
+              <p style={{ fontSize:10, color:T.t3, fontWeight:700, letterSpacing:"0.8px", textTransform:"uppercase", marginBottom:3 }}>
+                {greeting}
+              </p>
+              <p style={{ fontSize:22, fontWeight:900, color:T.t1, letterSpacing:"-0.5px", lineHeight:1.1, margin:0 }}>
+                {firstName ? `Hey, ${firstName}` : "Hey there"}
+              </p>
+              <button
+                onClick={() => setShowCityPicker(true)}
+                style={{
+                  display:"flex", alignItems:"center", gap:5, marginTop:6,
+                  background:"none", border:"none", cursor:"pointer", padding:0,
+                  fontFamily:"'Inter',sans-serif",
+                }}
+              >
+                {Icon.pin}
+                <span style={{ fontSize:11, color:T.t2, fontWeight:600 }}>
+                  {location?.label || "Set location"}
+                </span>
+              </button>
+            </div>
+
+            <div style={{ display:"flex", alignItems:"center", gap:8, paddingTop:2 }}>
+              {/* Bell */}
+              <div style={{
+                width:38, height:38, borderRadius:11,
+                background:T.s2, border:`1px solid ${T.border}`,
+                display:"flex", alignItems:"center", justifyContent:"center",
+                position:"relative", cursor:"pointer",
+              }}>
+                {Icon.bell}
+                <div style={{
+                  position:"absolute", top:8, right:8,
+                  width:6, height:6, borderRadius:3,
+                  background:T.lime, border:`1.5px solid ${T.bg}`,
+                }}/>
+              </div>
               {/* Avatar */}
               <div style={{
-                width:40,height:40,borderRadius:"50%",flexShrink:0,
-                background:`linear-gradient(135deg,${T.purple},#6366f1)`,
-                display:"flex",alignItems:"center",justifyContent:"center",
-                boxShadow:`0 3px 10px ${T.purple}44`,
+                width:38, height:38, borderRadius:11,
+                background:T.lime, display:"flex",
+                alignItems:"center", justifyContent:"center",
+                fontSize:15, fontWeight:900, color:"#000",
+                cursor:"pointer", flexShrink:0,
               }}>
-                <span style={{fontSize:16,fontWeight:900,color:"rgba(255,255,255,0.9)",userSelect:"none"}}>
-                  {firstName?firstName[0].toUpperCase():"?"}
-                </span>
+                {firstName ? firstName[0].toUpperCase() : "?"}
               </div>
-              <div>
-                <p style={{fontSize:11,color:T.sub,lineHeight:1,marginBottom:1}}>
-                  {firstName?`Hi ${firstName}`:"Welcome"}
-                </p>
-                <p style={{fontSize:17,fontWeight:900,color:T.text,lineHeight:1.2,letterSpacing:-0.3}}>
-                  {greeting}
-                </p>
-              </div>
-            </div>
-
-            {/* Right side: location + bell */}
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <button onClick={()=>setShowCityPicker(true)} style={{
-                display:"flex",alignItems:"center",gap:4,
-                padding:"6px 12px",borderRadius:20,
-                border:`1.5px solid ${T.border}`,background:"#F9FAFB",
-                color:T.sub,fontSize:11,cursor:"pointer",fontWeight:600,
-              }}>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
-                </svg>
-                {location?.label||"Set city"}
-              </button>
-              <button style={{
-                width:36,height:36,borderRadius:"50%",
-                background:"#F3F4F6",border:"none",cursor:"pointer",
-                display:"flex",alignItems:"center",justifyContent:"center",
-              }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={T.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                </svg>
-              </button>
             </div>
           </div>
 
-          {/* Row 2: Search + filter button */}
-          <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:14}}>
+          {/* Row 2: Search + Filter */}
+          <div style={{ display:"flex", gap:10, marginBottom:14 }}>
             <div style={{
-              flex:1,display:"flex",alignItems:"center",gap:10,
-              padding:"11px 16px",borderRadius:14,
-              background:"#F3F4F6",border:`1.5px solid ${T.border}`,
+              flex:1, display:"flex", alignItems:"center", gap:9,
+              padding:"11px 14px", borderRadius:12,
+              background:T.s2, border:`1px solid ${T.border}`,
             }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-              <span style={{fontSize:14,color:"#9CA3AF"}}>Gyms, turfs, trainers…</span>
+              {Icon.search}
+              <span style={{ fontSize:12, color:T.t3, fontWeight:500 }}>
+                Search gyms, yoga, courts…
+              </span>
             </div>
-            {/* Filter button */}
-            <button
-              onClick={()=>setShowFilterPanel(!showFilterPanel)}
-              style={{
-                width:44,height:44,borderRadius:14,flexShrink:0,
-                background:`linear-gradient(135deg,${T.purple},#6366f1)`,
-                border:"none",cursor:"pointer",
-                display:"flex",alignItems:"center",justifyContent:"center",
-                boxShadow:`0 4px 14px ${T.purple}44`,
-              }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="4" y1="6" x2="20" y2="6"/>
-                <line x1="8" y1="12" x2="16" y2="12"/>
-                <line x1="11" y1="18" x2="13" y2="18"/>
-              </svg>
-            </button>
+            <div style={{
+              width:44, height:44, borderRadius:12, flexShrink:0,
+              background:T.lime, display:"flex", alignItems:"center", justifyContent:"center",
+              cursor:"pointer", boxShadow:`0 4px 16px ${T.limeGlow}`,
+            }}>
+              {Icon.filter}
+            </div>
           </div>
 
-          {/* Row 3: Category strip */}
+          {/* Row 3: Category pills */}
           <div style={{
-            display:"flex",gap:10,
-            overflowX:"auto",scrollbarWidth:"none",
-            paddingBottom:2,
+            display:"flex", gap:6, overflowX:"auto",
+            paddingBottom:13, scrollbarWidth:"none",
           }}>
-            {CATEGORIES.map(cat=>(
-              <CategoryTile
-                key={cat.key} cat={cat}
-                active={activeCategory===cat.key}
-                onClick={()=>setActiveCategory(activeCategory===cat.key?null:cat.key)}
-              />
-            ))}
+            {CATEGORIES.map(cat => {
+              const active = activeCategory === cat.key;
+              return (
+                <div
+                  key={cat.key}
+                  onClick={() => setActiveCategory(active ? null : cat.key)}
+                  style={{
+                    flexShrink:0, padding:"7px 14px", borderRadius:20,
+                    fontSize:12, fontWeight:700, cursor:"pointer",
+                    whiteSpace:"nowrap",
+                    background: active ? T.lime : T.s2,
+                    border: `1px solid ${active ? T.lime : T.border}`,
+                    color: active ? "#000" : T.t2,
+                    boxShadow: active ? `0 2px 12px ${T.limeGlow}` : "none",
+                    transition:"all 0.12s",
+                    fontFamily:"'Inter',sans-serif",
+                  }}
+                >
+                  {cat.label}
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        {/* ── Content ───────────────────────────────────────────────── */}
-        <div style={{paddingTop:24}}>
+        {/* ── Content ── */}
+        <div style={{ paddingTop:24 }}>
 
           {/* SPONSORED */}
-          {(loading || sponsored.length>0) && (
-            <Section title="Sponsored" subtitle="Featured outlets near you">
+          {(loading || sponsored.length > 0) && (
+            <Section title="Sponsored">
               {loading ? (
                 <SwipeRow>
-                  {[0,1].map(i=><Skel key={i} w={300}/>)}
+                  {[0, 1].map(i => <Skel key={i} w={280} h={160}/>)}
                 </SwipeRow>
               ) : (
                 <SwipeRow>
-                  {sponsored.map(g=>(
-                    <SponsoredCard key={g.id} gym={g} onClick={()=>navigate(`/gym/${g.id}`)}/>
+                  {sponsored.map(g => (
+                    <HeroCard key={g.id} gym={g} onClick={() => navigate(`/gym/${g.id}`)}/>
                   ))}
                 </SwipeRow>
               )}
             </Section>
           )}
 
-          {/* POPULAR CHAINS */}
-          {(loading || chains.length>0) && (
-            <Section title="Chains near you" subtitle="Brand outlets with multiple branches">
+          {/* CHAINS */}
+          {(loading || chains.length > 0) && (
+            <Section title="Chains Near You" onSeeAll={() => {}}>
               {loading ? (
                 <SwipeRow gap={10}>
-                  {[0,1,2,3].map(i=><Skel key={i} w={150} h={150}/>)}
+                  {[0, 1, 2, 3].map(i => <Skel key={i} w={118} h={138}/>)}
                 </SwipeRow>
               ) : (
                 <SwipeRow gap={10}>
-                  {chains.map(c=>(
+                  {chains.map(c => (
                     <ChainCard
                       key={c.chain_name}
                       chain={c}
-                      onClick={()=>navigate(`/gym/${c.nearest_id}`)}
+                      onClick={() => navigate(`/gym/${c.nearest_id}`)}
                     />
                   ))}
                 </SwipeRow>
@@ -743,52 +777,52 @@ export default function Discovery() {
             </Section>
           )}
 
-          {/* RECOMMENDED */}
-          <Section title="Recommended" subtitle="Top rated near you" onSeeAll={()=>{}}>
+          {/* NEAR YOU */}
+          <Section title="Near You" onSeeAll={() => {}}>
             {loading ? (
               <SwipeRow>
-                {[0,1,2,3].map(i=><Skel key={i}/>)}
+                {[0, 1, 2, 3].map(i => <Skel key={i}/>)}
               </SwipeRow>
-            ) : recommended.length===0 ? (
-              <p style={{fontSize:13,color:T.sub,textAlign:"center",padding:"20px 20px"}}>
+            ) : recommended.length === 0 ? (
+              <p style={{ fontSize:12, color:T.t3, textAlign:"center", padding:"24px 20px" }}>
                 No outlets found near you
               </p>
             ) : (
               <SwipeRow>
-                {recommended.slice(0,10).map(g=>(
-                  <OutletCard key={g.id} gym={g} onClick={()=>navigate(`/gym/${g.id}`)}/>
+                {recommended.slice(0, 10).map(g => (
+                  <OutletCard key={g.id} gym={g} onClick={() => navigate(`/gym/${g.id}`)}/>
                 ))}
               </SwipeRow>
             )}
           </Section>
 
           {/* PREMIUM */}
-          {(loading || premium.length>0) && (
-            <Section title="Premium" subtitle="Elite fitness experiences" onSeeAll={()=>{}}>
+          {(loading || premium.length > 0) && (
+            <Section title="Premium" onSeeAll={() => {}}>
               {loading ? (
                 <SwipeRow>
-                  {[0,1,2].map(i=><Skel key={i} w={300}/>)}
+                  {[0, 1, 2].map(i => <Skel key={i} w={215} h={185}/>)}
                 </SwipeRow>
               ) : (
                 <SwipeRow>
-                  {premium.map(g=>(
-                    <PremiumCard key={g.id} gym={g} onClick={()=>navigate(`/gym/${g.id}`)}/>
+                  {premium.map(g => (
+                    <PremiumCard key={g.id} gym={g} onClick={() => navigate(`/gym/${g.id}`)}/>
                   ))}
                 </SwipeRow>
               )}
             </Section>
           )}
 
-          {/* NEARBY — all gyms */}
-          <Section title="Nearby" subtitle="Everything around you">
+          {/* NEARBY */}
+          <Section title="Nearby">
             {loading ? (
               <SwipeRow>
-                {[0,1,2,3].map(i=><Skel key={i}/>)}
+                {[0, 1, 2, 3].map(i => <Skel key={i}/>)}
               </SwipeRow>
             ) : (
               <SwipeRow>
-                {nearby.map(g=>(
-                  <OutletCard key={g.id} gym={g} onClick={()=>navigate(`/gym/${g.id}`)}/>
+                {nearby.map(g => (
+                  <OutletCard key={g.id} gym={g} onClick={() => navigate(`/gym/${g.id}`)}/>
                 ))}
               </SwipeRow>
             )}
@@ -796,6 +830,7 @@ export default function Discovery() {
 
         </div>
       </div>
+      <BottomNav />
     </>
   );
 }

@@ -30,6 +30,7 @@ function MessageBubble({ message, index, onFlowAnswer }) {
   if (message.role === "user")          return <UserBubble   message={message} index={index} />;
   if (message.role === "error")         return <ErrorBubble  message={message} index={index} />;
   if (message.role === "flow_question") return <FlowQuestion message={message} index={index} onFlowAnswer={onFlowAnswer} />;
+  if (message.role === "pref_note")     return <PrefNote     message={message} index={index} />;
   // assistant (streaming or complete)
   return <AssistantBubble message={message} index={index} />;
 }
@@ -51,33 +52,17 @@ function UserBubble({ message, index }) {
       <div
         style={{
           maxWidth: "80%",
-          padding: "14px 18px",
-          borderRadius: 24,
-          background:
-            "linear-gradient(135deg, rgba(99,102,241,0.18), rgba(139,92,246,0.18))",
-          border: "1px solid rgba(139,92,246,0.3)",
-          backdropFilter: "blur(12px)",
-          boxShadow:
-            "0 8px 32px rgba(139,92,246,0.15), 0 0 0 1px rgba(255,255,255,0.03)",
+          padding: "12px 16px",
+          borderRadius: 18,
+          background: "#1A1A1A",
+          border: "1px solid rgba(168,85,247,0.22)",
           position: "relative",
         }}
       >
-        <div
-          style={{
-            position: "absolute",
-            top: -1,
-            left: "20%",
-            right: "20%",
-            height: "1.5px",
-            background:
-              "linear-gradient(90deg, transparent, rgba(139,92,246,0.6), transparent)",
-            borderRadius: "2px",
-          }}
-        />
         <p
           style={{
-            color: "rgba(255,255,255,0.95)",
-            fontSize: 15.5,
+            color: "#FFFFFF",
+            fontSize: 15,
             lineHeight: 1.6,
             margin: 0,
             fontWeight: 450,
@@ -108,13 +93,10 @@ function ErrorBubble({ message, index }) {
       <div
         style={{
           maxWidth: "85%",
-          padding: "18px 22px",
-          borderRadius: 24,
-          background:
-            "linear-gradient(135deg, rgba(239,68,68,0.1), rgba(220,38,38,0.07))",
+          padding: "16px 20px",
+          borderRadius: 18,
+          background: "#1A1A1A",
           border: "1px solid rgba(239,68,68,0.28)",
-          backdropFilter: "blur(12px)",
-          boxShadow: "0 10px 40px rgba(239,68,68,0.1)",
         }}
       >
         <div
@@ -186,14 +168,10 @@ function FlowQuestion({ message, index, onFlowAnswer }) {
       <div
         style={{
           maxWidth: "92%",
-          padding: "20px 22px",
-          borderRadius: 24,
-          background:
-            "linear-gradient(135deg, rgba(17,24,39,0.65), rgba(31,41,55,0.45))",
-          border: "1px solid rgba(139,92,246,0.28)",
-          backdropFilter: "blur(24px)",
-          boxShadow:
-            "0 20px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(139,92,246,0.08)",
+          padding: "18px 20px",
+          borderRadius: 18,
+          background: "#1A1A1A",
+          border: "1px solid rgba(168,85,247,0.22)",
         }}
       >
         {/* Header with step indicator */}
@@ -385,6 +363,78 @@ function FlowQuestion({ message, index, onFlowAnswer }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PREF NOTE — small centred chip shown when saved preferences are being used
+// ─────────────────────────────────────────────────────────────────────────────
+function PrefNote({ message, index }) {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+
+  const typeLabel = message.flowType === "workout" ? "workout" : message.flowType === "meal" ? "meal plan" : message.flowType;
+
+  const handleReset = () => {
+    message.onReset?.();
+    setDismissed(true);
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        animation: "slideInLeft 0.35s cubic-bezier(0.16,1,0.3,1)",
+        animationDelay: `${index * 0.04}s`,
+        animationFillMode: "both",
+      }}
+    >
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "6px 14px",
+          borderRadius: 999,
+          background: "rgba(139,92,246,0.08)",
+          border: "1px solid rgba(139,92,246,0.2)",
+          backdropFilter: "blur(8px)",
+        }}
+      >
+        <span style={{
+          width: 5,
+          height: 5,
+          borderRadius: "50%",
+          background: "#8b5cf6",
+          flexShrink: 0,
+        }} />
+        <span style={{
+          fontSize: 12,
+          color: "rgba(196,181,253,0.8)",
+          fontWeight: 500,
+          letterSpacing: 0.2,
+        }}>
+          Using your saved {typeLabel} preferences
+        </span>
+        <button
+          onClick={handleReset}
+          style={{
+            background: "none",
+            border: "none",
+            color: "rgba(196,181,253,0.5)",
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: "pointer",
+            padding: "0 2px",
+            textDecoration: "underline",
+            textUnderlineOffset: 2,
+          }}
+        >
+          Reset
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ASSISTANT bubble — handles both streaming and complete states
 // ─────────────────────────────────────────────────────────────────────────────
 function AssistantBubble({ message, index }) {
@@ -448,15 +498,11 @@ function AssistantBubble({ message, index }) {
       <div
         style={{
           maxWidth: "93%",
-          padding: "22px 24px",
-          paddingBottom: isStreaming ? "22px" : "56px", // extra bottom space for action bar
-          borderRadius: 24,
-          background:
-            "linear-gradient(135deg, rgba(17,24,39,0.65), rgba(31,41,55,0.45))",
-          border: "1px solid rgba(255,255,255,0.08)",
-          backdropFilter: "blur(24px)",
-          boxShadow:
-            "0 24px 70px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.02)",
+          padding: "20px 22px",
+          paddingBottom: isStreaming ? "20px" : "54px",
+          borderRadius: 18,
+          background: "#1A1A1A",
+          border: "1px solid #1E1E1E",
           position: "relative",
         }}
       >
@@ -469,9 +515,9 @@ function AssistantBubble({ message, index }) {
             right: 0,
             height: "2px",
             background:
-              "linear-gradient(90deg, transparent, rgba(139,92,246,0.6), rgba(99,102,241,0.6), transparent)",
+              "linear-gradient(90deg, transparent, rgba(168,85,247,0.55), rgba(99,102,241,0.55), transparent)",
             animation: isStreaming ? "shimmer 2s ease-in-out infinite" : "none",
-            borderRadius: "24px 24px 0 0",
+            borderRadius: "18px 18px 0 0",
           }}
         />
 
@@ -481,9 +527,9 @@ function AssistantBubble({ message, index }) {
             display: "inline-flex",
             alignItems: "center",
             gap: 10,
-            paddingBottom: 14,
-            marginBottom: 14,
-            borderBottom: "1px solid rgba(255,255,255,0.06)",
+            paddingBottom: 12,
+            marginBottom: 12,
+            borderBottom: "1px solid #1E1E1E",
           }}
         >
           <div
@@ -639,11 +685,11 @@ function ActionPill({ onClick, disabled, active, activeColor, label, icon }) {
         borderRadius: 999,
         border: active
           ? `1px solid ${activeColor}50`
-          : "1px solid rgba(255,255,255,0.1)",
+          : "1px solid #2A2A2A",
         background: active
           ? `${activeColor}18`
-          : "rgba(255,255,255,0.05)",
-        color: active ? activeColor : "rgba(255,255,255,0.55)",
+          : "#111111",
+        color: active ? activeColor : "#6B7280",
         fontSize: 12,
         fontWeight: 600,
         cursor: disabled ? "default" : "pointer",
@@ -653,14 +699,14 @@ function ActionPill({ onClick, disabled, active, activeColor, label, icon }) {
       }}
       onMouseEnter={(e) => {
         if (!disabled && !active) {
-          e.currentTarget.style.background = "rgba(255,255,255,0.1)";
-          e.currentTarget.style.color = "rgba(255,255,255,0.85)";
+          e.currentTarget.style.background = "#222222";
+          e.currentTarget.style.color = "#9CA3AF";
         }
       }}
       onMouseLeave={(e) => {
         if (!disabled && !active) {
-          e.currentTarget.style.background = "rgba(255,255,255,0.05)";
-          e.currentTarget.style.color = "rgba(255,255,255,0.55)";
+          e.currentTarget.style.background = "#111111";
+          e.currentTarget.style.color = "#6B7280";
         }
       }}
     >

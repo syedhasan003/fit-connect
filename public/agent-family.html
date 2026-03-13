@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Central — Agent Family</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0A0A0A;
+      font-family: 'Inter', -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      padding: 52px 24px 72px;
+      color: #fff;
+    }
+
+    /* ── Header ───────────────────────────────────────────────────── */
+    .hdr { text-align: center; margin-bottom: 60px; }
+    .hdr .eye { font-size: 11px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: #A855F7; margin-bottom: 10px; }
+    .hdr h1  { font-size: 28px; font-weight: 900; letter-spacing: -0.03em; }
+    .hdr p   { margin-top: 8px; font-size: 14px; color: #6B7280; }
+
+    /* ── Hierarchy map ────────────────────────────────────────────── */
+    .hierarchy {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+      margin-bottom: 72px;
+    }
+
+    /* Central row */
+    .h-central {
+      background: rgba(168,85,247,0.06);
+      border: 1px solid rgba(168,85,247,0.22);
+      border-radius: 18px;
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .h-central .dot { width: 10px; height: 10px; border-radius: 50%; background: #A855F7; box-shadow: 0 0 8px 3px rgba(168,85,247,0.5); flex-shrink: 0; animation: dotPulse 2.4s ease-in-out infinite; }
+    @keyframes dotPulse { 0%,100%{opacity:.7;transform:scale(1)} 50%{opacity:1;transform:scale(1.3)} }
+    .h-central .info .role { font-size: 10px; font-weight: 800; letter-spacing: 0.1em; color: #A855F7; text-transform: uppercase; }
+    .h-central .info .name { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; }
+    .h-central .info .desc { font-size: 12px; color: #6B7280; margin-top: 2px; }
+
+    /* Connector line */
+    .h-line {
+      width: 1px;
+      height: 32px;
+      background: linear-gradient(to bottom, rgba(168,85,247,0.5), rgba(168,85,247,0.1));
+    }
+    .h-split {
+      display: flex;
+      align-items: flex-start;
+      gap: 0;
+      width: 100%;
+      max-width: 680px;
+      position: relative;
+    }
+    .h-split::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(50% - 20px);
+      height: 1px;
+      background: rgba(168,85,247,0.25);
+    }
+    .h-split::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: calc(50% - 20px);
+      height: 1px;
+      background: rgba(168,85,247,0.25);
+    }
+    .h-branch {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+      padding-top: 0;
+    }
+    .h-branch-line {
+      width: 1px;
+      height: 28px;
+      background: rgba(168,85,247,0.25);
+    }
+
+    .h-sub {
+      border-radius: 16px;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      max-width: 280px;
+    }
+    .h-sub.purple { background: rgba(168,85,247,0.04); border: 1px solid rgba(168,85,247,0.15); }
+    .h-sub.lime   { background: rgba(122,222,0,0.04);  border: 1px solid rgba(122,222,0,0.15); }
+
+    .h-sub .sdot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .h-sub.purple .sdot { background: #A855F7; }
+    .h-sub.lime   .sdot { background: #7ADE00; }
+
+    .h-sub .srole { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+    .h-sub.purple .srole { color: #A855F7; }
+    .h-sub.lime   .srole { color: #7ADE00; }
+    .h-sub .sname { font-size: 14px; font-weight: 800; }
+    .h-sub .sdesc { font-size: 11px; color: #6B7280; margin-top: 2px; }
+
+    .screens-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 8px;
+      width: 100%;
+      max-width: 280px;
+    }
+    .screen-chip {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 8px;
+      color: #6B7280;
+      background: #1A1A1A;
+      border: 1px solid #2A2A2A;
+    }
+
+    /* ── New minions section ──────────────────────────────────────── */
+    .section-label {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+    .section-label .eye { font-size: 11px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: #6B7280; margin-bottom: 8px; }
+    .section-label h2 { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
+    .section-label p { font-size: 13px; color: #6B7280; margin-top: 5px; }
+
+    .minions-grid {
+      display: flex;
+      gap: 24px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .mcard {
+      background: #111;
+      border: 1px solid #1E1E1E;
+      border-radius: 26px;
+      padding: 28px 20px 22px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      width: 272px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.3s, transform 0.3s, box-shadow 0.3s;
+    }
+    .mcard:hover { transform: translateY(-5px); }
+    .mcard.indigo { background: #0D0B18; }
+    .mcard.indigo:hover { border-color: rgba(99,102,241,0.45); box-shadow: 0 20px 60px rgba(99,102,241,0.1); }
+    .mcard.lime   { background: #0A0D07; }
+    .mcard.lime:hover   { border-color: rgba(122,222,0,0.4); box-shadow: 0 20px 60px rgba(122,222,0,0.08); }
+    .mcard::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      border-radius: 26px;
+    }
+    .mcard.indigo::before { background: radial-gradient(ellipse at 50% 0%, rgba(99,102,241,0.07) 0%, transparent 65%); }
+    .mcard.lime::before   { background: radial-gradient(ellipse at 50% 0%, rgba(122,222,0,0.06) 0%, transparent 65%); }
+
+    .mpill {
+      font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+      text-transform: uppercase; padding: 4px 13px;
+      border-radius: 20px;
+    }
+    .mpill.indigo { background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.25); color: #818CF8; }
+    .mpill.lime   { background: rgba(122,222,0,0.08); border: 1px solid rgba(122,222,0,0.22); color: #7ADE00; }
+
+    .svg-stage { display: flex; align-items: center; justify-content: center; height: 200px; }
+
+    .mname { font-size: 20px; font-weight: 900; letter-spacing: -0.02em; }
+    .mtag  { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; }
+    .mtag.indigo { color: #818CF8; }
+    .mtag.lime   { color: #7ADE00; }
+    .mdesc { font-size: 12px; color: #6B7280; text-align: center; line-height: 1.65; }
+
+    .mscreens { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; }
+    .mscreens .chip {
+      font-size: 10px; font-weight: 600; padding: 3px 9px; border-radius: 8px;
+      color: #6B7280; background: #1A1A1A; border: 1px solid #2A2A2A;
+    }
+    .mscreens .chip.indigo { color: #818CF8; border-color: rgba(99,102,241,0.2); background: rgba(99,102,241,0.05); }
+    .mscreens .chip.lime   { color: #7ADE00; border-color: rgba(122,222,0,0.2);  background: rgba(122,222,0,0.05); }
+
+    /* ── Animations ───────────────────────────────────────────────── */
+    .bob-o { animation: bobO 4s ease-in-out infinite; }
+    .bob-b { animation: bobB 3.6s ease-in-out infinite; }
+    @keyframes bobO { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-9px)} }
+    @keyframes bobB { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+
+    .blink { animation: blink 5s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    @keyframes blink { 0%,86%,94%,100%{transform:scaleY(1)} 89%,92%{transform:scaleY(0.06)} }
+
+    .ant-pulse { animation: antP 2.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    @keyframes antP { 0%,100%{opacity:.88;transform:scale(1)} 50%{opacity:1;transform:scale(1.25)} }
+
+    .ring-pulse { animation: ringP 3.2s ease-in-out infinite; }
+    @keyframes ringP { 0%,100%{opacity:.12} 50%{opacity:.3} }
+
+    /* Blaze wiggle */
+    .blaze-wiggle { animation: bWiggle 2.8s ease-in-out infinite; transform-box: view-box; transform-origin: 90px 195px; }
+    @keyframes bWiggle { 0%,100%{transform:rotate(0deg)} 25%{transform:rotate(-3deg)} 75%{transform:rotate(3deg)} }
+
+    /* Orbi's magnifying glass float */
+    .mag-float { animation: magF 3.5s ease-in-out infinite; transform-box: view-box; transform-origin: 152px 148px; }
+    @keyframes magF { 0%,100%{transform:rotate(-5deg)} 50%{transform:rotate(5deg)} }
+
+    /* Blaze raised arm wave */
+    .blaze-wave { animation: bWave 1.6s ease-in-out infinite; transform-box: view-box; transform-origin: 152px 168px; }
+    @keyframes bWave { 0%,100%{transform:rotate(-5deg)} 50%{transform:rotate(14deg)} }
+
+    /* Particles */
+    .p1{animation:pf1 5s ease-in-out infinite}
+    .p2{animation:pf2 6s ease-in-out infinite}
+    .p3{animation:pf3 4.2s ease-in-out infinite}
+    .p4{animation:pf4 7s ease-in-out infinite}
+    @keyframes pf1{0%,100%{opacity:.5;transform:translate(0,0)}50%{opacity:.8;transform:translate(-3px,-6px)}}
+    @keyframes pf2{0%,100%{opacity:.55;transform:translate(0,0)}50%{opacity:.85;transform:translate(4px,-5px)}}
+    @keyframes pf3{0%,100%{opacity:.3;transform:translate(0,0)}50%{opacity:.55;transform:translate(-2px,5px)}}
+    @keyframes pf4{0%,100%{opacity:.38;transform:translate(0,0)}50%{opacity:.65;transform:translate(3px,4px)}}
+
+    /* Lightning bolt pulse on Blaze */
+    .bolt-pulse { animation: boltP 1.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    @keyframes boltP { 0%,100%{opacity:.85;filter:drop-shadow(0 0 3px rgba(122,222,0,0.5))} 50%{opacity:1;filter:drop-shadow(0 0 8px rgba(122,222,0,0.9))} }
+
+    /* Blaze motion lines */
+    .motion { animation: motF 1.4s ease-in-out infinite; }
+    @keyframes motF { 0%,100%{opacity:.28} 50%{opacity:.55} }
+
+    /* Size comparison note */
+    .compare {
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 32px;
+      margin-top: 64px;
+      padding: 32px;
+      background: #111;
+      border: 1px solid #1E1E1E;
+      border-radius: 24px;
+      max-width: 680px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .compare-item { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .compare-item .clabel { font-size: 11px; color: #6B7280; font-weight: 600; }
+    .compare-item .cname  { font-size: 13px; font-weight: 800; }
+    .compare-divider { width: 1px; height: 80px; background: #1E1E1E; }
+
+    .footnote { text-align: center; margin-top: 40px; font-size: 11px; color: #374151; }
+  </style>
+</head>
+<body>
+
+  <!-- ════════════════════════════════════════════════
+       HEADER
+  ════════════════════════════════════════════════ -->
+  <div class="hdr">
+    <div class="eye">Central · Agent System</div>
+    <h1>The Agent Family</h1>
+    <p>One orchestrator. Two sub-agents. Each owns their territory.</p>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════
+       HIERARCHY MAP
+  ════════════════════════════════════════════════ -->
+  <div class="hierarchy">
+
+    <!-- Central -->
+    <div class="h-central">
+      <span class="dot"></span>
+      <div class="info">
+        <div class="role">Orchestrator · Always On</div>
+        <div class="name">Central &nbsp;·&nbsp; Chip</div>
+        <div class="desc">The main agent. Global presence — Home, notifications, morning brief, weekly adaptations.</div>
+      </div>
+    </div>
+
+    <!-- Connector -->
+    <div class="h-line"></div>
+
+    <!-- Split into 2 branches -->
+    <div class="h-split">
+
+      <!-- Branch 1: Orbi -->
+      <div class="h-branch">
+        <div class="h-branch-line"></div>
+        <div class="h-sub purple">
+          <span class="sdot"></span>
+          <div>
+            <div class="srole">Knowledge Agent</div>
+            <div class="sname">Orbi</div>
+            <div class="sdesc">Vault, Health, AI Chat · the analyst</div>
+          </div>
+        </div>
+        <div class="screens-list">
+          <span class="screen-chip">Vault</span>
+          <span class="screen-chip">Collections</span>
+          <span class="screen-chip">Health Records</span>
+          <span class="screen-chip">Health Timeline</span>
+          <span class="screen-chip">Central AI</span>
+          <span class="screen-chip">Weekly Progress</span>
+          <span class="screen-chip">Reminders</span>
+        </div>
+      </div>
+
+      <!-- Branch 2: Blaze -->
+      <div class="h-branch">
+        <div class="h-branch-line"></div>
+        <div class="h-sub lime">
+          <span class="sdot"></span>
+          <div>
+            <div class="srole">Fitness Agent</div>
+            <div class="sname">Blaze</div>
+            <div class="sdesc">Workout, Diet, Discovery · the trainer</div>
+          </div>
+        </div>
+        <div class="screens-list">
+          <span class="screen-chip">Workout Builder</span>
+          <span class="screen-chip">Workout Tracking</span>
+          <span class="screen-chip">Exercise Library</span>
+          <span class="screen-chip">Diet Plans</span>
+          <span class="screen-chip">Meal Logging</span>
+          <span class="screen-chip">Discovery</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════
+       THE 2 NEW MINI MASCOTS
+  ════════════════════════════════════════════════ -->
+  <div class="section-label">
+    <div class="eye">New Designs</div>
+    <h2>Meet the Sub-Agents</h2>
+    <p>Smaller, rounder, cuter — designed to live in corners of their home screens</p>
+  </div>
+
+  <div class="minions-grid">
+
+    <!-- ══════════════════════════════════════════
+         ORBI  —  Knowledge / Vault / Health
+    ══════════════════════════════════════════ -->
+    <div class="mcard indigo">
+      <span class="mpill indigo">Knowledge Agent</span>
+
+      <div class="svg-stage">
+        <svg class="bob-o" viewBox="0 0 180 220" width="155" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="oGrad" cx="34%" cy="27%" r="72%">
+              <stop offset="0%" stop-color="#2D1A72"/>
+              <stop offset="100%" stop-color="#0D0828"/>
+            </radialGradient>
+            <radialGradient id="oEye" cx="44%" cy="36%" r="58%">
+              <stop offset="0%" stop-color="#ffffff"/>
+              <stop offset="30%" stop-color="#E0E7FF"/>
+              <stop offset="100%" stop-color="#4F46E5"/>
+            </radialGradient>
+            <filter id="oSoft" x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="4"/>
+            </filter>
+          </defs>
+
+          <!-- Outer aura ring -->
+          <circle class="ring-pulse" cx="90" cy="96" r="80" fill="none" stroke="#6366F1" stroke-width="1.3"/>
+
+          <!-- LEFT ARM (holding magnifying glass) -->
+          <rect x="10" y="152" width="24" height="42" rx="12" fill="#180E3A" stroke="#6366F1" stroke-width="1.7"/>
+          <!-- Left hand -->
+          <circle cx="22" cy="201" r="13" fill="#180E3A" stroke="#6366F1" stroke-width="1.7"/>
+
+          <!-- MAGNIFYING GLASS (floats near left hand, animated) -->
+          <g class="mag-float">
+            <circle cx="16" cy="178" r="13" fill="none" stroke="#818CF8" stroke-width="2.2"/>
+            <circle cx="16" cy="178" r="8"  fill="#6366F1" opacity="0.15"/>
+            <circle cx="16" cy="178" r="4"  fill="#818CF8" opacity="0.3"/>
+            <!-- Handle -->
+            <line x1="25" y1="187" x2="32" y2="195" stroke="#818CF8" stroke-width="2.8" stroke-linecap="round"/>
+          </g>
+
+          <!-- RIGHT ARM (up, like thinking/pointing) -->
+          <rect x="148" y="148" width="24" height="40" rx="12" fill="#180E3A" stroke="#6366F1" stroke-width="1.7"
+            transform="rotate(-30 148 148)"/>
+          <!-- Right hand -->
+          <circle cx="162" cy="118" r="13" fill="#180E3A" stroke="#6366F1" stroke-width="1.7"/>
+
+          <!-- HEAD -->
+          <circle cx="90" cy="96" r="76" fill="url(#oGrad)" stroke="#6366F1" stroke-width="2.4"/>
+          <!-- Sheen -->
+          <path d="M 50 54 Q 70 38 94 36 Q 74 50 60 68 Z" fill="white" opacity="0.03"/>
+
+          <!-- VISOR -->
+          <rect x="22" y="66" width="136" height="62" rx="31" fill="#040118" stroke="#6366F1" stroke-width="1.2" stroke-opacity="0.35"/>
+
+          <!-- Data-glass lines (tiny horizontal lines over visor — analyst vibes) -->
+          <line x1="28" y1="83" x2="46" y2="83" stroke="#6366F1" stroke-width="1" stroke-opacity="0.3" stroke-linecap="round"/>
+          <line x1="28" y1="88" x2="40" y2="88" stroke="#6366F1" stroke-width="1" stroke-opacity="0.2" stroke-linecap="round"/>
+          <line x1="136" y1="83" x2="154" y2="83" stroke="#6366F1" stroke-width="1" stroke-opacity="0.3" stroke-linecap="round"/>
+          <line x1="142" y1="88" x2="154" y2="88" stroke="#6366F1" stroke-width="1" stroke-opacity="0.2" stroke-linecap="round"/>
+
+          <!-- EYE L — halo -->
+          <ellipse cx="62" cy="99" rx="22" ry="24" fill="#6366F1" filter="url(#oSoft)" opacity="0.18"/>
+          <!-- Eye L -->
+          <ellipse class="blink" cx="62" cy="99" rx="14" ry="15.5" fill="#4338CA"/>
+          <ellipse class="blink" cx="62" cy="99" rx="9.5" ry="11" fill="url(#oEye)"/>
+          <circle cx="57" cy="93" r="3.5" fill="white" opacity="0.94"/>
+          <!-- Tiny sparkle in eye R -->
+          <circle cx="69" cy="94" r="1.5" fill="white" opacity="0.5"/>
+
+          <!-- EYE R — halo -->
+          <ellipse cx="118" cy="99" rx="22" ry="24" fill="#6366F1" filter="url(#oSoft)" opacity="0.18"/>
+          <!-- Eye R -->
+          <ellipse class="blink" cx="118" cy="99" rx="14" ry="15.5" fill="#4338CA"/>
+          <ellipse class="blink" cx="118" cy="99" rx="9.5" ry="11" fill="url(#oEye)"/>
+          <circle cx="113" cy="93" r="3.5" fill="white" opacity="0.94"/>
+          <circle cx="125" cy="94" r="1.5" fill="white" opacity="0.5"/>
+
+          <!-- Blush — indigo tinted -->
+          <ellipse cx="42"  cy="116" rx="14" ry="8" fill="#818CF8" opacity="0.16"/>
+          <ellipse cx="138" cy="116" rx="14" ry="8" fill="#818CF8" opacity="0.16"/>
+
+          <!-- Mouth — calm, slight smile (analyst is focused) -->
+          <path d="M 70 124 Q 90 135 110 124" stroke="#6366F1" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+
+          <!-- ANTENNA — indigo orb (knowledge node) -->
+          <line x1="90" y1="20" x2="90" y2="33" stroke="#6366F1" stroke-width="2.3" stroke-linecap="round"/>
+          <!-- Small binary dots on antenna line -->
+          <circle cx="90" cy="26" r="2" fill="#818CF8" opacity="0.4"/>
+          <circle class="ant-pulse" cx="90" cy="14" r="8.5" fill="#818CF8"/>
+          <circle cx="90" cy="14" r="14" fill="none" stroke="#818CF8" stroke-width="1.3" opacity="0.22"/>
+          <circle cx="90" cy="14" r="5" fill="#E0E7FF"/>
+
+          <!-- BODY (small, compact) -->
+          <ellipse cx="90" cy="188" rx="42" ry="26" fill="url(#oGrad)" stroke="#6366F1" stroke-width="1.9"/>
+
+          <!-- Chest detail — small hex grid (data/knowledge symbol) -->
+          <circle cx="90" cy="188" r="13" fill="#040118" stroke="#6366F1" stroke-width="1.3"/>
+          <!-- Tiny circuit dot pattern -->
+          <circle cx="90" cy="184" r="2" fill="#818CF8" opacity="0.7"/>
+          <circle cx="86" cy="190" r="2" fill="#818CF8" opacity="0.5"/>
+          <circle cx="94" cy="190" r="2" fill="#818CF8" opacity="0.5"/>
+          <circle cx="90" cy="196" r="2" fill="#818CF8" opacity="0.3"/>
+
+          <!-- FEET -->
+          <ellipse cx="68"  cy="212" rx="22" ry="12" fill="#100830" stroke="#6366F1" stroke-width="1.7"/>
+          <ellipse cx="112" cy="212" rx="22" ry="12" fill="#100830" stroke="#6366F1" stroke-width="1.7"/>
+
+          <!-- Floating data particles -->
+          <circle class="p1" cx="8"   cy="54"  r="3"   fill="#6366F1" opacity="0.5"/>
+          <circle class="p2" cx="174" cy="48"  r="2.2" fill="#818CF8" opacity="0.6"/>
+          <circle class="p3" cx="5"   cy="130" r="2"   fill="#6366F1" opacity="0.38"/>
+          <circle class="p4" cx="176" cy="136" r="2.5" fill="#818CF8" opacity="0.44"/>
+          <circle class="p3" cx="22"  cy="8"   r="1.5" fill="#818CF8" opacity="0.35"/>
+          <circle class="p1" cx="160" cy="12"  r="1.5" fill="#6366F1" opacity="0.4"/>
+        </svg>
+      </div>
+
+      <span class="mname">Orbi</span>
+      <span class="mtag indigo">Vault · Health · AI Chat</span>
+      <p class="mdesc">Quiet, analytical, always studying. Peeks out in Vault corners, highlights insights in Health, surfaces memory in AI Chat.</p>
+
+      <div class="mscreens">
+        <span class="chip indigo">Vault</span>
+        <span class="chip indigo">Collections</span>
+        <span class="chip indigo">Health Timeline</span>
+        <span class="chip indigo">Central AI</span>
+        <span class="chip indigo">Reminders</span>
+        <span class="chip indigo">Weekly Progress</span>
+      </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════
+         BLAZE  —  Fitness / Diet / Discovery
+    ══════════════════════════════════════════ -->
+    <div class="mcard lime">
+      <span class="mpill lime">Fitness Agent</span>
+
+      <div class="svg-stage">
+        <svg class="bob-b" viewBox="0 0 180 220" width="155" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="bGrad" cx="34%" cy="27%" r="72%">
+              <stop offset="0%" stop-color="#172910"/>
+              <stop offset="100%" stop-color="#070E04"/>
+            </radialGradient>
+            <radialGradient id="bEye" cx="44%" cy="36%" r="58%">
+              <stop offset="0%" stop-color="#ffffff"/>
+              <stop offset="30%" stop-color="#ECFCCB"/>
+              <stop offset="100%" stop-color="#4D7C0F"/>
+            </radialGradient>
+            <filter id="bSoft" x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="4"/>
+            </filter>
+            <filter id="bGlow" x="-80%" y="-80%" width="260%" height="260%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+
+          <!-- Motion lines (behind — drawn first) -->
+          <line class="motion" x1="4"  y1="96"  x2="22" y2="96"  stroke="#7ADE00" stroke-width="2"   stroke-linecap="round" opacity="0.35"/>
+          <line class="motion" x1="4"  y1="108" x2="18" y2="108" stroke="#7ADE00" stroke-width="1.5" stroke-linecap="round" opacity="0.25"/>
+          <line class="motion" x1="4"  y1="120" x2="14" y2="120" stroke="#7ADE00" stroke-width="1"   stroke-linecap="round" opacity="0.18"/>
+
+          <!-- LEFT ARM (down, slightly back — mid stride) -->
+          <rect x="12" y="164" width="24" height="42" rx="12" fill="#0E1808" stroke="#7ADE00" stroke-width="1.7"/>
+          <circle cx="24" cy="213" r="13" fill="#0E1808" stroke="#7ADE00" stroke-width="1.7"/>
+
+          <!-- MINI DUMBBELL in left hand area -->
+          <rect x="6" y="202" width="22" height="6" rx="3" fill="#070E04" stroke="#7ADE00" stroke-width="1.4"/>
+          <circle cx="8"  cy="205" r="6" fill="#070E04" stroke="#7ADE00" stroke-width="1.4"/>
+          <circle cx="26" cy="205" r="6" fill="#070E04" stroke="#7ADE00" stroke-width="1.4"/>
+
+          <!-- RIGHT ARM (raised, waving) -->
+          <g class="blaze-wave">
+            <rect x="148" y="148" width="24" height="44" rx="12" fill="#0E1808" stroke="#7ADE00" stroke-width="1.7"
+              transform="rotate(-40 148 148)"/>
+            <ellipse cx="172" cy="92" rx="18" ry="21" fill="#0E1808" stroke="#7ADE00" stroke-width="1.9"/>
+            <line x1="164" y1="78" x2="161" y2="69" stroke="#7ADE00" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="171" y1="75" x2="170" y2="66" stroke="#7ADE00" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="179" y1="77" x2="180" y2="68" stroke="#7ADE00" stroke-width="1.5" stroke-linecap="round"/>
+          </g>
+
+          <!-- HEAD -->
+          <circle class="ring-pulse" cx="90" cy="96" r="80" fill="none" stroke="#7ADE00" stroke-width="1.3"/>
+          <circle cx="90" cy="96" r="76" fill="url(#bGrad)" stroke="#7ADE00" stroke-width="2.4"/>
+          <!-- Sheen -->
+          <path d="M 50 54 Q 70 38 94 36 Q 74 50 60 68 Z" fill="white" opacity="0.03"/>
+
+          <!-- LIGHTNING BOLT on forehead (above visor, fitness marking) -->
+          <path class="bolt-pulse"
+            d="M 96 22 L 84 44 L 92 44 L 80 68 L 100 42 L 91 42 Z"
+            fill="#7ADE00"/>
+          <path d="M 96 22 L 84 44 L 92 44 L 80 68 L 100 42 L 91 42 Z"
+            fill="none" stroke="#C8FF60" stroke-width="1" opacity="0.55"/>
+
+          <!-- VISOR -->
+          <rect x="22" y="66" width="136" height="62" rx="31" fill="#020802" stroke="#7ADE00" stroke-width="1.2" stroke-opacity="0.35"/>
+
+          <!-- EYE L — halo (bigger/rounder = excited energy) -->
+          <ellipse cx="62" cy="99" rx="22" ry="24" fill="#7ADE00" filter="url(#bSoft)" opacity="0.17"/>
+          <!-- Eye L -->
+          <ellipse class="blink" cx="62" cy="99" rx="15" ry="17" fill="#365314"/>
+          <ellipse class="blink" cx="62" cy="99" rx="10" ry="12" fill="url(#bEye)"/>
+          <circle cx="57" cy="93" r="3.8" fill="white" opacity="0.94"/>
+
+          <!-- EYE R — halo -->
+          <ellipse cx="118" cy="99" rx="22" ry="24" fill="#7ADE00" filter="url(#bSoft)" opacity="0.17"/>
+          <!-- Eye R -->
+          <ellipse class="blink" cx="118" cy="99" rx="15" ry="17" fill="#365314"/>
+          <ellipse class="blink" cx="118" cy="99" rx="10" ry="12" fill="url(#bEye)"/>
+          <circle cx="113" cy="93" r="3.8" fill="white" opacity="0.94"/>
+
+          <!-- Blush — lime tinted (flushed from working out!) -->
+          <ellipse cx="40"  cy="117" rx="15" ry="8.5" fill="#84CC16" opacity="0.18"/>
+          <ellipse cx="140" cy="117" rx="15" ry="8.5" fill="#84CC16" opacity="0.18"/>
+
+          <!-- Mouth — BIG excited grin -->
+          <path d="M 62 126 Q 90 146 118 126" stroke="#7ADE00" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+          <!-- Grin teeth implied with a slightly lighter line segment -->
+          <path d="M 74 130 Q 90 140 106 130" stroke="#7ADE00" stroke-width="1" fill="rgba(122,222,0,0.15)" stroke-linecap="round"/>
+
+          <!-- ANTENNA — lightning bolt orb -->
+          <line x1="90" y1="20" x2="90" y2="33" stroke="#7ADE00" stroke-width="2.3" stroke-linecap="round"/>
+          <circle class="ant-pulse" cx="90" cy="13" r="9" fill="#7ADE00"/>
+          <circle cx="90" cy="13" r="14" fill="none" stroke="#7ADE00" stroke-width="1.3" opacity="0.22"/>
+          <circle cx="90" cy="13" r="5.5" fill="#DDFF70"/>
+
+          <!-- BODY -->
+          <ellipse cx="90" cy="188" rx="42" ry="26" fill="url(#bGrad)" stroke="#7ADE00" stroke-width="1.9"/>
+
+          <!-- Chest — heartrate line (fitness symbol) -->
+          <rect x="64" y="180" width="52" height="16" rx="8" fill="#020802" stroke="#7ADE00" stroke-width="1.2"/>
+          <polyline points="68,188 73,188 77,182 82,194 87,188 93,188 97,185 102,191 107,188 112,188"
+            fill="none" stroke="#7ADE00" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+          <!-- FEET — slightly apart (mid-stride energy) -->
+          <ellipse cx="65"  cy="212" rx="23" ry="12" fill="#080E04" stroke="#7ADE00" stroke-width="1.7" transform="rotate(-4 65 212)"/>
+          <ellipse cx="115" cy="212" rx="23" ry="12" fill="#080E04" stroke="#7ADE00" stroke-width="1.7" transform="rotate(4 115 212)"/>
+
+          <!-- Sweat drops (workout energy) -->
+          <path d="M 148 54 Q 151 48 154 54 Q 154 58 151 58 Q 148 58 148 54 Z" fill="#7ADE00" opacity="0.4"/>
+          <path d="M 156 44 Q 158 40 160 44 Q 160 47 158 47 Q 156 47 156 44 Z" fill="#7ADE00" opacity="0.3"/>
+
+          <!-- Floating lime particles -->
+          <circle class="p1" cx="8"   cy="54"  r="3"   fill="#7ADE00" opacity="0.5"/>
+          <circle class="p2" cx="174" cy="48"  r="2.2" fill="#7ADE00" opacity="0.6"/>
+          <circle class="p3" cx="5"   cy="132" r="2"   fill="#A855F7" opacity="0.38"/>
+          <circle class="p4" cx="176" cy="138" r="2.5" fill="#7ADE00" opacity="0.44"/>
+        </svg>
+      </div>
+
+      <span class="mname">Blaze</span>
+      <span class="mtag lime">Workout · Diet · Discovery</span>
+      <p class="mdesc">Perpetually hyped. Nudges you mid-workout, celebrates PRs, suggests gyms nearby, reminds you to log meals.</p>
+
+      <div class="mscreens">
+        <span class="chip lime">Workout Tracking</span>
+        <span class="chip lime">Exercise Library</span>
+        <span class="chip lime">Diet Plans</span>
+        <span class="chip lime">Meal Logging</span>
+        <span class="chip lime">Discovery</span>
+        <span class="chip lime">Diet Builder</span>
+      </div>
+    </div>
+
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════
+       SIZE COMPARISON  (how they'll feel in the app)
+  ════════════════════════════════════════════════ -->
+  <div class="compare">
+
+    <div class="compare-item">
+      <!-- Central/Chip at ~72px -->
+      <svg viewBox="0 0 200 270" width="56" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="100" cy="98" r="74" fill="#1C0D33" stroke="#A855F7" stroke-width="3"/>
+        <rect x="34" y="66" width="132" height="66" rx="33" fill="#030112"/>
+        <ellipse cx="68"  cy="101" rx="18" ry="20" fill="#5B21B6"/>
+        <ellipse cx="132" cy="101" rx="18" ry="20" fill="#5B21B6"/>
+        <ellipse cx="68"  cy="101" rx="12" ry="14" fill="#E9D5FF"/>
+        <ellipse cx="132" cy="101" rx="12" ry="14" fill="#E9D5FF"/>
+        <circle cx="63"  cy="94" r="4" fill="white"/>
+        <circle cx="127" cy="94" r="4" fill="white"/>
+        <path d="M 80 130 Q 100 144 120 130" stroke="#A855F7" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <line x1="100" y1="24" x2="100" y2="38" stroke="#A855F7" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="100" cy="18" r="10" fill="#7ADE00"/>
+        <rect x="60" y="164" width="80" height="58" rx="30" fill="#1C0D33" stroke="#A855F7" stroke-width="3"/>
+        <rect x="66"  y="217" width="27" height="28" rx="13" fill="#1C0D33" stroke="#A855F7" stroke-width="3"/>
+        <rect x="107" y="217" width="27" height="28" rx="13" fill="#1C0D33" stroke="#A855F7" stroke-width="3"/>
+      </svg>
+      <span class="clabel">Full-size</span>
+      <span class="cname">Central</span>
+    </div>
+
+    <div class="compare-divider"></div>
+
+    <div class="compare-item">
+      <!-- Orbi at ~52px -->
+      <svg viewBox="0 0 180 220" width="44" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="90" cy="96" r="76" fill="#0D0828" stroke="#6366F1" stroke-width="3"/>
+        <rect x="22" y="66" width="136" height="62" rx="31" fill="#040118"/>
+        <ellipse cx="62"  cy="99" rx="16" ry="18" fill="#4338CA"/>
+        <ellipse cx="118" cy="99" rx="16" ry="18" fill="#4338CA"/>
+        <ellipse cx="62"  cy="99" rx="10" ry="12" fill="#E0E7FF"/>
+        <ellipse cx="118" cy="99" rx="10" ry="12" fill="#E0E7FF"/>
+        <circle cx="57"  cy="93" r="3.5" fill="white"/>
+        <circle cx="113" cy="93" r="3.5" fill="white"/>
+        <path d="M 70 124 Q 90 135 110 124" stroke="#6366F1" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <circle cx="90" cy="14" r="9" fill="#818CF8"/>
+        <ellipse cx="90" cy="188" rx="42" ry="26" fill="#0D0828" stroke="#6366F1" stroke-width="3"/>
+        <ellipse cx="68"  cy="212" rx="22" ry="12" fill="#100830" stroke="#6366F1" stroke-width="2.5"/>
+        <ellipse cx="112" cy="212" rx="22" ry="12" fill="#100830" stroke="#6366F1" stroke-width="2.5"/>
+      </svg>
+      <span class="clabel">Sub-agent</span>
+      <span class="cname">Orbi</span>
+    </div>
+
+    <div class="compare-divider"></div>
+
+    <div class="compare-item">
+      <!-- Blaze at ~52px -->
+      <svg viewBox="0 0 180 220" width="44" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="90" cy="96" r="76" fill="#070E04" stroke="#7ADE00" stroke-width="3"/>
+        <rect x="22" y="66" width="136" height="62" rx="31" fill="#020802"/>
+        <ellipse cx="62"  cy="99" rx="17" ry="19" fill="#365314"/>
+        <ellipse cx="118" cy="99" rx="17" ry="19" fill="#365314"/>
+        <ellipse cx="62"  cy="99" rx="11" ry="13" fill="#ECFCCB"/>
+        <ellipse cx="118" cy="99" rx="11" ry="13" fill="#ECFCCB"/>
+        <circle cx="57"  cy="93" r="3.8" fill="white"/>
+        <circle cx="113" cy="93" r="3.8" fill="white"/>
+        <path d="M 62 126 Q 90 146 118 126" stroke="#7ADE00" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <circle cx="90" cy="13" r="9" fill="#7ADE00"/>
+        <ellipse cx="90" cy="188" rx="42" ry="26" fill="#070E04" stroke="#7ADE00" stroke-width="3"/>
+        <ellipse cx="65"  cy="212" rx="23" ry="12" fill="#080E04" stroke="#7ADE00" stroke-width="2.5"/>
+        <ellipse cx="115" cy="212" rx="23" ry="12" fill="#080E04" stroke="#7ADE00" stroke-width="2.5"/>
+      </svg>
+      <span class="clabel">Sub-agent</span>
+      <span class="cname">Blaze</span>
+    </div>
+
+    <div class="compare-divider"></div>
+
+    <div class="compare-item">
+      <!-- Orbi tiny (roaming corner, ~32px) -->
+      <svg viewBox="0 0 180 220" width="30" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="90" cy="96" r="76" fill="#0D0828" stroke="#6366F1" stroke-width="4"/>
+        <rect x="22" y="66" width="136" height="62" rx="31" fill="#040118"/>
+        <ellipse cx="62" cy="99" rx="16" ry="18" fill="#4338CA"/>
+        <ellipse cx="62" cy="99" rx="10" ry="12" fill="#E0E7FF"/>
+        <ellipse cx="118" cy="99" rx="16" ry="18" fill="#4338CA"/>
+        <ellipse cx="118" cy="99" rx="10" ry="12" fill="#E0E7FF"/>
+        <circle cx="90" cy="14" r="9" fill="#818CF8"/>
+      </svg>
+      <span class="clabel">Corner peek</span>
+      <span class="cname">~32px</span>
+    </div>
+
+    <div class="compare-divider"></div>
+
+    <div class="compare-item">
+      <!-- Blaze tiny (~32px) -->
+      <svg viewBox="0 0 180 220" width="30" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="90" cy="96" r="76" fill="#070E04" stroke="#7ADE00" stroke-width="4"/>
+        <rect x="22" y="66" width="136" height="62" rx="31" fill="#020802"/>
+        <ellipse cx="62"  cy="99" rx="17" ry="19" fill="#365314"/>
+        <ellipse cx="62"  cy="99" rx="11" ry="13" fill="#ECFCCB"/>
+        <ellipse cx="118" cy="99" rx="17" ry="19" fill="#365314"/>
+        <ellipse cx="118" cy="99" rx="11" ry="13" fill="#ECFCCB"/>
+        <circle cx="90" cy="13" r="9" fill="#7ADE00"/>
+      </svg>
+      <span class="clabel">Corner peek</span>
+      <span class="cname">~32px</span>
+    </div>
+
+  </div>
+
+  <p class="footnote">
+    All animations live above · next step: turn chosen designs into React components + corner-roaming behavior
+  </p>
+
+</body>
+</html>

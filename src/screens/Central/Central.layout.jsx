@@ -4,6 +4,7 @@ import {
   streamCentral,
   getPreferences,
   savePreferences,
+  clearPreferences,
   getFlowQuestions,
   transcribeAudio,
   speakText,
@@ -13,10 +14,16 @@ import Suggestions from "../../components/central/Suggestions";
 import TodaysInsight from "../../components/central/TodaysInsight";
 import MessageHistory from "../../components/central/MessageHistory";
 import CentralInput from "../../components/central/CentralInput";
+import ChatHistoryDrawer from "../../components/central/ChatHistoryDrawer";
 import BottomNav from "../../components/navigation/BottomNav";
+import useChatSessions from "../../hooks/useChatSessions";
 
 // ── Flow intents that need preference collection before generating ─────────
 const FLOW_INTENTS = ["workout", "meal", "reminder"];
+
+// ── Session memory constants ────────────────────────────────────────────────
+const CONTEXT_KEY      = "central_prev_context";
+const MAX_CONTEXT_TURNS = 6; // 3 user/assistant pairs
 
 // ── Lightweight frontend intent detection (mirrors backend patterns) ───────
 function detectIntent(text) {
@@ -52,6 +59,15 @@ export default function CentralLayout() {
   // Preference collection flow state: null | { type, questions, step, answers }
   const [flow, setFlow] = useState(null);
 
+  // ── Chat history drawer ───────────────────────────────────────────────────
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const { sessions, newSessionId, saveSession, loadSession, deleteSession } = useChatSessions();
+
+  // Current session ID — stable per component mount, changes on "new chat"
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const sessionIdRef = useRef(null);
+  if (!sessionIdRef.current) sessionIdRef.current = newSessionId();
+
   // ── Refs ─────────────────────────────────────────────────────────────────
   const abortRef          = useRef(null);
   const streamingMsgIdRef = useRef(null);
@@ -72,6 +88,80 @@ export default function CentralLayout() {
       )
       .map((m) => ({ role: m.role, content: m.content }));
   }, [messages]);
+
+  // ── Session memory: last N turns persisted across page loads ─────────────
+  // We pre-seed from localStorage on mount and pass silently as context
+  // (not rendered in the UI) so Chip remembers the previous conversation.
+  const prevContextRef = useRef(
+    (() => {
+      try {
+        const stored = localStorage.getItem(CONTEXT_KEY);
+        return stored ? JSON.parse(stored) : [];
+      } catch {
+        return [];
+      }
+    })()
+  );
+
+  // Save last N turns to localStorage whenever messages settle
+  useEffect(() => {
+    const turns = messages
+      .filter((m) => (m.role === "user" || m.role === "assistant") && !m.isStreaming && m.content)
+      .map((m) => ({ role: m.role, content: m.content }))
+      .slice(-MAX_CONTEXT_TURNS * 2);
+    if (turns.length > 0) {
+      try { localStorage.setItem(CONTEXT_KEY, JSON.stringify(turns)); } catch { /* quota */ }
+    }
+  }, [messages]);
+
+  // Auto-save current session whenever messages change (debounced via useEffect)
+  useEffect(() => {
+    if (messages.length > 0 && !isStreaming) {
+      saveSession(sessionIdRef.current, messages);
+    }
+  }, [messages, isStreaming, saveSession]);
+
+  // ── New chat ─────────────────────────────────────────────────────────────
+  const handleNewChat = useCallback(() => {
+    // Save current session before clearing (already done by effect above,
+    // but explicit save ensures we have the latest state)
+    if (messages.length > 0) {
+      saveSession(sessionIdRef.current, messages);
+    }
+    // Reset all conversation state
+    sessionIdRef.current = newSessionId();
+    setMessages([]);
+    setFlow(null);
+    setActiveAgent(null);
+    prevContextRef.current = [];
+    setDrawerOpen(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, newSessionId, saveSession]);
+
+  // ── Load past session ────────────────────────────────────────────────────
+  const handleLoadSession = useCallback((id) => {
+    if (id === sessionIdRef.current) {
+      setDrawerOpen(false);
+      return;
+    }
+    // Save current session first
+    if (messages.length > 0) {
+      saveSession(sessionIdRef.current, messages);
+    }
+    // Load the selected session
+    const loaded = loadSession(id);
+    sessionIdRef.current = id;
+    setFlow(null);
+    setActiveAgent(null);
+    // Restore as display messages — mark all as complete (not streaming)
+    setMessages(loaded.map((m) => ({ ...m, isStreaming: false })));
+    // Update prevContext to the loaded history so new messages have full context
+    prevContextRef.current = loaded
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map((m) => ({ role: m.role, content: m.content }));
+    setDrawerOpen(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, saveSession, loadSession]);
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -165,9 +255,15 @@ export default function CentralLayout() {
     // Track full response text for TTS
     let fullText = "";
 
+    // Merge previous session context (silent, not shown in UI) with current session
+    const fullHistory = [
+      ...prevContextRef.current,
+      ...convHistoryRef.current,
+    ].slice(-(MAX_CONTEXT_TURNS * 2)); // cap total context passed to backend
+
     streamCentral({
       question,
-      conversationHistory: convHistoryRef.current,
+      conversationHistory: fullHistory,
       flowContext,
       signal: abort.signal,
       onAgent: ({ agent }) => {
@@ -333,7 +429,20 @@ export default function CentralLayout() {
             prefData.data &&
             Object.keys(prefData.data).length > 0
           ) {
-            // Preferences saved — stream directly with them
+            // Show a small note so the user knows which saved prefs are being used
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `pnote_${Date.now()}`,
+                role: "pref_note",
+                flowType: intent,
+                data: prefData.data,
+                onReset: () => {
+                  clearPreferences(intent).catch(() => {});
+                },
+              },
+            ]);
+            // Stream directly with saved prefs
             startStreaming(question, intent, prefData.data);
             return;
           }
@@ -402,7 +511,7 @@ export default function CentralLayout() {
     <div
       style={{
         minHeight: "100vh",
-        background: "#000",
+        background: "#0A0A0A",
         color: "#fff",
         display: "flex",
         flexDirection: "column",
@@ -419,27 +528,63 @@ export default function CentralLayout() {
           flexShrink: 0,
         }}
       >
-        {/* Wordmark */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div
+        {/* Left side: history button + wordmark */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* History / menu button */}
+          <button
+            onClick={() => setDrawerOpen(true)}
+            title="Chat history"
             style={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
-              boxShadow: "0 0 10px rgba(139,92,246,0.7)",
-            }}
-          />
-          <span
-            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 10,
+              border: "1px solid #1E1E1E",
+              background: "#1A1A1A",
+              color: "#6B7280",
               fontSize: 16,
-              fontWeight: 700,
-              color: "rgba(255,255,255,0.92)",
-              letterSpacing: 0.3,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "all 0.18s ease",
+              flexShrink: 0,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(139,92,246,0.12)";
+              e.currentTarget.style.borderColor = "rgba(139,92,246,0.3)";
+              e.currentTarget.style.color = "#c4b5fd";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "#1A1A1A";
+              e.currentTarget.style.borderColor = "#1E1E1E";
+              e.currentTarget.style.color = "#6B7280";
             }}
           >
-            Central
-          </span>
+            ☰
+          </button>
+
+          {/* Wordmark */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
+                boxShadow: "0 0 10px rgba(139,92,246,0.7)",
+              }}
+            />
+            <span
+              style={{
+                fontSize: 16,
+                fontWeight: 700,
+                color: "rgba(255,255,255,0.92)",
+                letterSpacing: 0.3,
+              }}
+            >
+              Central
+            </span>
+          </div>
         </div>
 
         {/* Right side: speaking indicator + voice toggle + online dot */}
@@ -470,10 +615,10 @@ export default function CentralLayout() {
             title={voiceEnabled ? "Voice response on — click to mute" : "Voice response off — click to enable"}
             style={{
               display: "flex", alignItems: "center", gap: 5,
-              background: voiceEnabled ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.05)",
-              border: voiceEnabled ? "1px solid rgba(99,102,241,0.3)" : "1px solid rgba(255,255,255,0.1)",
+              background: voiceEnabled ? "rgba(168,85,247,0.12)" : "#1A1A1A",
+              border: voiceEnabled ? "1px solid rgba(168,85,247,0.28)" : "1px solid #1E1E1E",
               borderRadius: 20, padding: "3px 10px",
-              color: voiceEnabled ? "#a5b4fc" : "rgba(255,255,255,0.3)",
+              color: voiceEnabled ? "#c084fc" : "#6B7280",
               fontSize: 12, fontWeight: 600, cursor: "pointer",
               transition: "all 0.2s ease",
             }}
@@ -490,7 +635,7 @@ export default function CentralLayout() {
               boxShadow: "0 0 8px rgba(34,197,94,0.7)",
               animation: "onlinePulse 3s ease-in-out infinite",
             }} />
-            <span style={{ fontSize: 11.5, color: "rgba(255,255,255,0.38)", fontWeight: 500 }}>
+            <span style={{ fontSize: 11.5, color: "#6B7280", fontWeight: 500 }}>
               online
             </span>
           </div>
@@ -508,41 +653,118 @@ export default function CentralLayout() {
       >
         {/* EMPTY STATE */}
         {!hasMessages && (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 20,
-              marginTop: 8,
-            }}
-          >
-            <GlowingOrb loading={false} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 24, marginTop: 4 }}>
 
-            {/* Greeting */}
+            {/* Mascot — centred, slightly smaller to leave room for content */}
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <GlowingOrb loading={false} />
+            </div>
+
+            {/* Greeting — bold, left-aligned, matching Vault header style */}
             <div>
-              <h2
-                style={{
-                  fontSize: 22,
-                  fontWeight: 600,
-                  margin: 0,
-                  marginBottom: 6,
-                }}
-              >
+              <h2 style={{
+                fontSize: 26,
+                fontWeight: 800,
+                margin: 0,
+                marginBottom: 6,
+                letterSpacing: -0.3,
+              }}>
                 {getGreeting()} 👋
               </h2>
-              <p
-                style={{
-                  color: "rgba(255,255,255,0.42)",
-                  fontSize: 15,
-                  margin: 0,
-                  lineHeight: 1.5,
-                }}
-              >
-                What would you like to work on today?
+              <p style={{
+                color: "#9CA3AF",
+                fontSize: 14,
+                margin: 0,
+                lineHeight: 1.5,
+              }}>
+                Your AI fitness coach. Ask anything.
               </p>
             </div>
 
+            {/* Quick action cards — 2-column grid */}
             <Suggestions onSelect={handleSubmit} />
+
+            {/* Recent conversations — only shown if history exists */}
+            {sessions.length > 0 && (
+              <div>
+                <p style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "#6B7280",
+                  marginBottom: 10,
+                  textTransform: "uppercase",
+                  letterSpacing: 1.4,
+                }}>
+                  Recent
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {sessions.slice(0, 3).map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => handleLoadSession(s.id)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        padding: "14px 16px",
+                        borderRadius: 14,
+                        background: "#1A1A1A",
+                        border: "1px solid #1E1E1E",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        width: "100%",
+                        transition: "border-color 0.15s ease",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#2A2A2A"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#1E1E1E"; }}
+                    >
+                      <div style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 10,
+                        background: "rgba(168,85,247,0.10)",
+                        border: "1px solid rgba(168,85,247,0.18)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 15,
+                        flexShrink: 0,
+                      }}>
+                        💬
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{
+                          color: "#FFFFFF",
+                          fontSize: 13.5,
+                          fontWeight: 500,
+                          margin: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}>
+                          {s.title}
+                        </p>
+                        {s.preview && (
+                          <p style={{
+                            color: "#6B7280",
+                            fontSize: 12,
+                            margin: "3px 0 0",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}>
+                            {s.preview}
+                          </p>
+                        )}
+                      </div>
+                      <span style={{ color: "#6B7280", fontSize: 16, flexShrink: 0 }}>›</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Today's Insight */}
             <TodaysInsight />
           </div>
         )}
@@ -617,6 +839,17 @@ export default function CentralLayout() {
 
       {/* ─── BOTTOM NAV ──────────────────────────────────────────────────── */}
       <BottomNav />
+
+      {/* ─── CHAT HISTORY DRAWER ─────────────────────────────────────────── */}
+      <ChatHistoryDrawer
+        isOpen={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        sessions={sessions}
+        currentSessionId={sessionIdRef.current}
+        onLoadSession={handleLoadSession}
+        onNewChat={handleNewChat}
+        onDeleteSession={deleteSession}
+      />
 
       <style>{`
         @keyframes onlinePulse {

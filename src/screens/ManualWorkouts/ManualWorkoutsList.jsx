@@ -1,304 +1,225 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "../../components/navigation/BottomNav";
 import { fetchVaultItems } from "../../api/vault";
+import { T, VAULT_CSS, relDate } from "../Vault/vaultDesign";
 
-export default function ManualWorkoutsList() {
-  const navigate = useNavigate();
-  const [workouts, setWorkouts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
+const A = { color: T.lime, dim: T.limeDim, glow: T.limeGlow };
 
-  useEffect(() => {
-    loadWorkouts();
-  }, []);
-
-  const loadWorkouts = async () => {
-    try {
-      const data = await fetchVaultItems();
-      // Filter only workout items
-      const workoutItems = data.filter(item => item.type === "workout" || item.source === "workout");
-      setWorkouts(workoutItems);
-    } catch (error) {
-      console.error("Failed to load workouts:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filteredWorkouts = workouts.filter(workout =>
-    workout.title?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
+function Skel({ w = "100%", h = 14, r = 8, style = {} }) {
   return (
     <div style={{
-      minHeight: "100vh",
-      background: "#000",
-      color: "#fff",
-      paddingBottom: "100px",
-    }}>
-      <div style={{ padding: "24px 20px" }}>
-        {/* HEADER */}
-        <div style={{ marginBottom: 28 }}>
-          <button
-            onClick={() => navigate(-1)}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "#8b5cf6",
-              fontSize: 28,
-              cursor: "pointer",
-              padding: 0,
-              marginBottom: 8,
-            }}
-          >
-            ←
-          </button>
-          <h1 style={{
-            margin: 0,
-            fontSize: 28,
-            fontWeight: 600,
-            letterSpacing: 0.3,
-          }}>
-            Manual Workouts
-          </h1>
-          <p style={{
-            margin: "8px 0 0",
-            fontSize: 14,
-            color: "rgba(255,255,255,0.5)",
-          }}>
-            Workout plans created with the manual builder
-          </p>
-        </div>
-
-        {/* SEARCH */}
-        <div style={{ position: "relative", marginBottom: 24 }}>
-          <input
-            type="text"
-            placeholder="Search workouts..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "14px 20px",
-              borderRadius: 16,
-              border: "1px solid rgba(255, 255, 255, 0.08)",
-              background: "rgba(255, 255, 255, 0.03)",
-              color: "#fff",
-              fontSize: 15,
-              outline: "none",
-            }}
-          />
-        </div>
-
-        {/* WORKOUTS LIST */}
-        {loading ? (
-          <LoadingState />
-        ) : filteredWorkouts.length === 0 ? (
-          <EmptyState searchQuery={searchQuery} />
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {filteredWorkouts.map((workout) => (
-              <WorkoutCard
-                key={workout.id}
-                workout={workout}
-                onClick={() => navigate(`/vault/workouts/${workout.id}`)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      <BottomNav />
-    </div>
+      width: w, height: h, borderRadius: r,
+      background: `linear-gradient(90deg,${T.s2} 25%,${T.s3} 50%,${T.s2} 75%)`,
+      backgroundSize: "200% 100%", animation: "shimmer 1.4s infinite", ...style,
+    }}/>
   );
 }
 
-function WorkoutCard({ workout, onClick }) {
-  const [isHover, setIsHover] = useState(false);
+function parseWorkoutData(content) {
+  try {
+    const data = typeof content === "string" ? JSON.parse(content) : content;
+    const days = data?.days || [];
+    let exercises = 0, sets = 0;
+    days.forEach(day =>
+      (day.muscles || []).forEach(m =>
+        (m.areas || []).forEach(a =>
+          (a.exercises || []).forEach(ex => {
+            exercises++;
+            sets += (ex.sets || []).length;
+          })
+        )
+      )
+    );
+    return { days: days.length, exercises, sets };
+  } catch {
+    return { days: 0, exercises: 0, sets: 0 };
+  }
+}
 
-  // Parse workout data
-  const workoutData = typeof workout.content === 'string' 
-    ? JSON.parse(workout.content) 
-    : workout.content;
-
-  // Calculate exercises and sets from nested days structure
-  const days = workoutData?.days || [];
-  const exerciseCount = days.reduce((total, day) => {
-    return total + (day.muscles || []).reduce((muscleTotal, muscle) => {
-      return muscleTotal + (muscle.areas || []).reduce((areaTotal, area) => {
-        return areaTotal + (area.exercises || []).length;
-      }, 0);
-    }, 0);
-  }, 0);
-
-  const totalSets = days.reduce((total, day) => {
-    return total + (day.muscles || []).reduce((muscleTotal, muscle) => {
-      return muscleTotal + (muscle.areas || []).reduce((areaTotal, area) => {
-        return areaTotal + (area.exercises || []).reduce((exTotal, exercise) => {
-          return exTotal + (exercise.sets || []).length;
-        }, 0);
-      }, 0);
-    }, 0);
-  }, 0);
+function WorkoutCard({ item, onClick }) {
+  const [hover, setHover] = useState(false);
+  const stats = parseWorkoutData(item.content);
 
   return (
     <div
       onClick={onClick}
-      onMouseEnter={() => setIsHover(true)}
-      onMouseLeave={() => setIsHover(false)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={{
-        position: "relative",
-        borderRadius: 18,
-        padding: "20px",
-        background: isHover
-          ? "linear-gradient(135deg, rgba(17, 24, 39, 0.7), rgba(31, 41, 55, 0.5))"
-          : "linear-gradient(135deg, rgba(17, 24, 39, 0.5), rgba(31, 41, 55, 0.3))",
-        backdropFilter: "blur(12px)",
-        cursor: "pointer",
-        transition: "all 0.3s ease",
-        transform: isHover ? "translateY(-4px)" : "translateY(0)",
-        overflow: "hidden",
+        padding: 16, marginBottom: 10, cursor: "pointer",
+        background: T.s2,
+        border: `1px solid ${hover ? A.color + "44" : T.border}`,
+        borderRadius: T.rad,
+        transform: hover ? "scale(1.01)" : "scale(1)",
+        boxShadow: hover ? `0 0 18px ${A.glow}` : "none",
+        transition: "border-color .15s, transform .15s, box-shadow .15s",
       }}
     >
-      {/* Animated border */}
-      <div style={{
-        position: "absolute",
-        inset: 0,
-        borderRadius: 18,
-        padding: "1px",
-        background: isHover
-          ? "linear-gradient(135deg, rgba(139, 92, 246, 0.4), rgba(99, 102, 241, 0.4))"
-          : "linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(99, 102, 241, 0.2))",
-        WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
-        WebkitMaskComposite: "xor",
-        maskComposite: "exclude",
-        pointerEvents: "none",
-      }} />
-
-      <div style={{ position: "relative", zIndex: 1 }}>
-        <div style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 12,
-        }}>
-          <div>
-            <h3 style={{
-              margin: 0,
-              fontSize: 18,
-              fontWeight: 600,
-              color: "#fff",
-            }}>
-              {workout.title || "Untitled Workout"}
-            </h3>
-            <p style={{
-              margin: "4px 0 0",
-              fontSize: 13,
-              color: "rgba(255,255,255,0.5)",
-            }}>
-              {new Date(workout.created_at).toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric'
-              })}
-            </p>
-          </div>
-          {workout.is_pinned && (
-            <span style={{ fontSize: 18 }}>📌</span>
-          )}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+        <div style={{ flex: 1, paddingRight: 10 }}>
+          <p style={{ fontSize: 15, fontWeight: 800, color: T.t1, margin: "0 0 3px", letterSpacing: "-0.2px" }}>
+            {item.title || "Untitled Workout"}
+          </p>
+          <p style={{ fontSize: 11, color: T.t3, margin: 0 }}>{relDate(item.created_at)}</p>
         </div>
+        {item.pinned && (
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, marginTop: 2 }}>
+            <path d="M9 1L13 5L8.5 9.5L7 13L1 7L4.5 5.5L9 1Z" fill={A.color} stroke={A.color} strokeWidth="1"/>
+          </svg>
+        )}
+      </div>
 
-        <div style={{
-          display: "flex",
-          gap: 12,
-          flexWrap: "wrap",
-        }}>
-          <StatBadge icon="🏋️" label={`${exerciseCount} exercises`} color="#8b5cf6" />
-          <StatBadge icon="📊" label={`${totalSets} sets`} color="#6366f1" />
-        </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        {[
+          { label: `${stats.days} day${stats.days !== 1 ? "s" : ""}` },
+          { label: `${stats.exercises} exercise${stats.exercises !== 1 ? "s" : ""}` },
+          { label: `${stats.sets} set${stats.sets !== 1 ? "s" : ""}` },
+        ].map((s, i) => (
+          <div key={i} style={{
+            padding: "4px 9px", borderRadius: 6,
+            background: i === 0 ? A.dim : T.s3,
+            border: `1px solid ${i === 0 ? "rgba(122,222,0,.2)" : T.border2}`,
+            fontSize: 10, fontWeight: 700,
+            color: i === 0 ? A.color : T.t3,
+          }}>{s.label}</div>
+        ))}
       </div>
     </div>
   );
 }
 
-function StatBadge({ icon, label, color }) {
-  return (
-    <div style={{
-      display: "flex",
-      alignItems: "center",
-      gap: 6,
-      padding: "6px 12px",
-      borderRadius: 999,
-      background: `${color}15`,
-      border: `1px solid ${color}30`,
-    }}>
-      <span style={{ fontSize: 14 }}>{icon}</span>
-      <span style={{
-        fontSize: 13,
-        fontWeight: 600,
-        color: color,
-      }}>
-        {label}
-      </span>
-    </div>
-  );
-}
+export default function ManualWorkoutsList() {
+  const navigate = useNavigate();
+  const [workouts, setWorkouts] = useState([]);
+  const [loading, setLoad]      = useState(true);
+  const [search, setSearch]     = useState("");
+  const [focus, setFocus]       = useState(false);
 
-function LoadingState() {
-  return (
-    <div style={{
-      textAlign: "center",
-      padding: "60px 20px",
-    }}>
-      <div style={{
-        width: 50,
-        height: 50,
-        margin: "0 auto 20px",
-        border: "3px solid rgba(139, 92, 246, 0.2)",
-        borderTop: "3px solid #8b5cf6",
-        borderRadius: "50%",
-        animation: "spin 1s linear infinite",
-      }} />
-      <p style={{
-        fontSize: 15,
-        color: "rgba(255,255,255,0.6)",
-      }}>
-        Loading workouts...
-      </p>
-      <style>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
-    </div>
-  );
-}
+  useEffect(() => {
+    fetchVaultItems()
+      .then(data => setWorkouts((data || []).filter(i => i.type === "workout" || i.source === "workout")))
+      .catch(() => setWorkouts([]))
+      .finally(() => setLoad(false));
+  }, []);
 
-function EmptyState({ searchQuery }) {
+  const filtered = workouts.filter(w =>
+    !search || w.title?.toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
-    <div style={{
-      textAlign: "center",
-      padding: "60px 20px",
-    }}>
-      <span style={{ fontSize: 60, marginBottom: 20, display: "block" }}>🏋️</span>
-      <h3 style={{
-        margin: "0 0 12px",
-        fontSize: 20,
-        fontWeight: 600,
-      }}>
-        {searchQuery ? "No workouts found" : "No workouts yet"}
-      </h3>
-      <p style={{
-        margin: 0,
-        fontSize: 15,
-        color: "rgba(255,255,255,0.6)",
-        lineHeight: 1.6,
-      }}>
-        {searchQuery
-          ? "Try a different search term"
-          : "Create your first workout with the Manual Builder"}
-      </p>
+    <div style={{ minHeight: "100vh", background: T.bg, color: T.t1, paddingBottom: 90, fontFamily: "'Inter',sans-serif" }}>
+      <div style={{ padding: "56px 22px 0" }}>
+        {/* Back */}
+        <button onClick={() => navigate(-1)} style={{
+          background: "none", border: "none", cursor: "pointer", padding: 0, marginBottom: 16,
+          display: "flex", alignItems: "center", gap: 6,
+        }}>
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path d="M11 4L6 9L11 14" stroke={A.color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <span style={{ fontSize: 13, color: A.color, fontWeight: 600 }}>Vault</span>
+        </button>
+
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 11, background: A.dim,
+            border: `1px solid rgba(122,222,0,.2)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <svg width="18" height="18" viewBox="0 0 22 22" fill="none">
+              <path d="M2 11H4M18 11H20M4 8H7V14H4V8ZM15 8H18V14H15V8Z" stroke={A.color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M7 11H15" stroke={A.color} strokeWidth="2.2" strokeLinecap="round"/>
+            </svg>
+          </div>
+          <div>
+            <p style={{ fontSize: 22, fontWeight: 900, color: T.t1, margin: 0, letterSpacing: "-0.5px" }}>Workout Plans</p>
+            <p style={{ fontSize: 12, color: T.t3, margin: "2px 0 0" }}>
+              {loading ? "Loading…" : `${workouts.length} plan${workouts.length !== 1 ? "s" : ""}`}
+            </p>
+          </div>
+        </div>
+
+        {/* Search */}
+        <div style={{ position: "relative", margin: "14px 0 18px" }}>
+          <svg style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)" }}
+            width="15" height="15" viewBox="0 0 15 15" fill="none">
+            <circle cx="6.5" cy="6.5" r="5" stroke={T.t3} strokeWidth="1.4"/>
+            <path d="M10.5 10.5L14 14" stroke={T.t3} strokeWidth="1.4" strokeLinecap="round"/>
+          </svg>
+          <input
+            type="text" placeholder="Search workouts…" value={search}
+            onChange={e => setSearch(e.target.value)}
+            onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
+            style={{
+              width: "100%", padding: "12px 14px 12px 36px",
+              background: T.s2, border: `1px solid ${focus ? A.color : T.border}`,
+              borderRadius: 14, fontSize: 14, color: T.t1,
+              fontFamily: "'Inter',sans-serif", outline: "none",
+              boxShadow: focus ? `0 0 0 3px ${A.dim}` : "none",
+              transition: "border-color .15s, box-shadow .15s",
+            }}
+          />
+        </div>
+
+        {/* New plan CTA */}
+        <button
+          onClick={() => navigate("/workout-builder")}
+          style={{
+            width: "100%", padding: "13px", borderRadius: 14,
+            background: "transparent",
+            border: `1px dashed rgba(122,222,0,.3)`,
+            color: A.color, fontSize: 14, fontWeight: 700, cursor: "pointer",
+            marginBottom: 20, fontFamily: "'Inter',sans-serif",
+          }}
+        >+ Create New Workout Plan</button>
+      </div>
+
+      {/* List */}
+      <div style={{ padding: "0 22px" }}>
+        {loading ? (
+          [1, 2, 3].map(i => (
+            <div key={i} style={{ background: T.s2, border: `1px solid ${T.border}`, borderRadius: T.rad, padding: 16, marginBottom: 10 }}>
+              <Skel w="70%" h={15} r={6} style={{ marginBottom: 10 }}/>
+              <Skel w="35%" h={10} r={5} style={{ marginBottom: 14 }}/>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Skel w={60} h={24} r={6}/>
+                <Skel w={80} h={24} r={6}/>
+                <Skel w={60} h={24} r={6}/>
+              </div>
+            </div>
+          ))
+        ) : filtered.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "60px 20px" }}>
+            <div style={{ width: 64, height: 64, borderRadius: 20, background: T.s2,
+              border: `1px solid ${T.border}`, display: "flex", alignItems: "center",
+              justifyContent: "center", margin: "0 auto 20px" }}>
+              <svg width="28" height="28" viewBox="0 0 22 22" fill="none">
+                <path d="M2 11H4M18 11H20M4 8H7V14H4V8ZM15 8H18V14H15V8Z" stroke={T.border2} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M7 11H15" stroke={T.border2} strokeWidth="2.2" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <p style={{ fontSize: 16, fontWeight: 800, color: T.t1, margin: "0 0 8px" }}>
+              {search ? "No results" : "No workout plans yet"}
+            </p>
+            <p style={{ fontSize: 13, color: T.t3, margin: "0 0 24px" }}>
+              {search ? "Try a different search" : "Build your first plan with the Workout Builder"}
+            </p>
+            {!search && (
+              <button onClick={() => navigate("/workout-builder")} style={{
+                padding: "12px 28px", borderRadius: 12, border: "none", cursor: "pointer",
+                background: `linear-gradient(135deg,${A.color},#2DCF10)`,
+                color: "#000", fontSize: 14, fontWeight: 800,
+              }}>Open Workout Builder</button>
+            )}
+          </div>
+        ) : (
+          filtered.map(item => (
+            <WorkoutCard key={item.id} item={item} onClick={() => navigate(`/vault/workouts/${item.id}`)}/>
+          ))
+        )}
+      </div>
+
+      <BottomNav/>
+      <style>{VAULT_CSS}</style>
     </div>
   );
 }

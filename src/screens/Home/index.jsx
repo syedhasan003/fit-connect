@@ -8,7 +8,10 @@ import { useAuth } from "../../auth/AuthContext";
 import { getWeekAdherence, getWeightHistory, logWeight } from "../../api/health";
 import { getMorningBrief } from "../../api/agent";
 import { useAgent } from "../../context/AgentContext";
-import AgentStatusPill from "../../components/agent/AgentStatusPill";
+import WalkingChip from "../../components/agent/WalkingChip";
+import PerchingAgent from "../../components/agent/PerchingAgent";
+import OrbiMascot from "../../components/agent/OrbiMascot";
+import BlazeMascot from "../../components/agent/BlazeMascot";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -234,8 +237,8 @@ export default function Home() {
 
       <div style={{ padding: "0 20px" }}>
 
-        {/* AGENT STATUS PILL — always visible, shows agent is alive */}
-        <AgentStatusPill />
+        {/* CHIP — walks across the top, pauses to look at you, says hi when clicked */}
+        <WalkingChip />
 
         {/* TODAY SECTION */}
         <SectionHeader title="Today" />
@@ -249,7 +252,18 @@ export default function Home() {
         <DayBrief today={today} user={user} weekDays={weekDays} weightHistory={weightHistory} />
 
         {/* MORNING BRIEF — AI-generated daily brief card */}
-        <MorningBriefCard brief={morningBrief} loading={briefLoading} onAskMore={() => navigate("/central")} />
+        {/* Orbi perches on the top edge of this card — wrap with relative so she sits above overflow:hidden */}
+        <div style={{ position: "relative" }}>
+          <MorningBriefCard brief={morningBrief} loading={briefLoading} onAskMore={() => navigate("/central")} />
+          {morningBrief && (
+            <PerchingAgent
+              Mascot={OrbiMascot}
+              size={52}
+              message="I wrote this ✨"
+              style={{ top: -28, left: "50%", transform: "translateX(-50%)", zIndex: 10 }}
+            />
+          )}
+        </div>
 
         {/* REMINDERS SUMMARY — today's active reminders only */}
         {reminderCount > 0 && (

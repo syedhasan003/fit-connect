@@ -4,32 +4,20 @@
  * A persistent, always-visible strip on the Home screen that shows the
  * user their agent is alive and watching.
  *
- * Idle:     ● Central is watching  ·  Last: Morning Brief · 3h ago  ›
- * On event: Orb flashes white → fades to purple. Text says "just now".
+ * Idle:     [Chip] Central is watching  ·  Last: Morning Brief · 3h ago  ›
+ * On event: Chip flashes white → fades to purple. Text updates to "just now".
  * Expanded: Slide-down log of last 3 agent events with icons + timestamps.
  */
 
 import { useState, useEffect, useRef } from "react";
 import { useAgent } from "../../context/AgentContext";
+import CentralMascot from "./CentralMascot";
 
 // ── Keyframe injection ────────────────────────────────────────────────────────
 const STYLES = `
-@keyframes orbPulse {
-  0%, 100% { opacity: 0.7; transform: scale(1);    box-shadow: 0 0 6px 2px rgba(139,92,246,0.4); }
-  50%       { opacity: 1;   transform: scale(1.12); box-shadow: 0 0 12px 5px rgba(139,92,246,0.7); }
-}
-@keyframes orbFlash {
-  0%   { background: #ffffff; box-shadow: 0 0 18px 8px rgba(255,255,255,0.9); transform: scale(1.4); }
-  60%  { background: #a78bfa; box-shadow: 0 0 12px 5px rgba(139,92,246,0.6); transform: scale(1.1); }
-  100% { background: #8b5cf6; box-shadow: 0 0 6px 2px rgba(139,92,246,0.4);  transform: scale(1); }
-}
 @keyframes pillSlideDown {
   from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes dimPulse {
-  0%, 100% { opacity: 0.35; }
-  50%       { opacity: 0.55; }
 }
 `;
 
@@ -83,22 +71,8 @@ export default function AgentStatusPill() {
     ? `${lastEvent.label} · ${relativeTime(lastEvent.timestamp)}`
     : "No events yet";
 
-  // Orb animation
-  const orbStyle = {
-    width: 9, height: 9,
-    borderRadius: "50%",
-    background: isConnected ? "#8b5cf6" : "#4b5563",
-    flexShrink: 0,
-    animation: flashing
-      ? "orbFlash 1.4s ease-out forwards"
-      : isConnected
-        ? "orbPulse 2.8s ease-in-out infinite"
-        : "dimPulse 3s ease-in-out infinite",
-    boxShadow: isConnected
-      ? "0 0 6px 2px rgba(139,92,246,0.4)"
-      : "0 0 3px 1px rgba(75,85,99,0.3)",
-    transition: "background 0.4s",
-  };
+  // Mascot state
+  const mascotState = flashing ? "flash" : isConnected ? "idle" : "offline";
 
   return (
     <div style={{ margin: "0 0 14px 0" }}>
@@ -109,11 +83,11 @@ export default function AgentStatusPill() {
           width: "100%",
           display: "flex",
           alignItems: "center",
-          gap: 10,
+          gap: 8,
           background: "rgba(139,92,246,0.07)",
           border: "1px solid rgba(139,92,246,0.18)",
           borderRadius: expanded ? "12px 12px 0 0" : 12,
-          padding: "10px 14px",
+          padding: "6px 14px 6px 10px",
           cursor: "pointer",
           textAlign: "left",
           transition: "background 0.2s, border-color 0.2s",
@@ -121,8 +95,8 @@ export default function AgentStatusPill() {
         onMouseEnter={e => e.currentTarget.style.background = "rgba(139,92,246,0.12)"}
         onMouseLeave={e => e.currentTarget.style.background = "rgba(139,92,246,0.07)"}
       >
-        {/* Orb */}
-        <span style={orbStyle} />
+        {/* Chip mascot */}
+        <CentralMascot size={34} state={mascotState} />
 
         {/* Labels */}
         <span style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}>

@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Central — Mascot Concepts</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0A0A0A;
+      font-family: 'Inter', -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      padding: 56px 24px 72px;
+      color: #fff;
+    }
+
+    .hdr { text-align: center; margin-bottom: 56px; }
+    .hdr .eyebrow {
+      font-size: 11px; font-weight: 800; letter-spacing: 0.14em;
+      text-transform: uppercase; color: #A855F7; margin-bottom: 10px;
+    }
+    .hdr h1 {
+      font-size: 26px; font-weight: 900; letter-spacing: -0.03em;
+    }
+    .hdr p { margin-top: 7px; font-size: 14px; color: #6B7280; }
+
+    .grid {
+      display: flex;
+      gap: 22px;
+      justify-content: center;
+      flex-wrap: wrap;
+      max-width: 840px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: #111;
+      border: 1px solid #1E1E1E;
+      border-radius: 26px;
+      padding: 30px 22px 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      width: 248px;
+      cursor: pointer;
+      transition: border-color 0.3s, transform 0.3s, box-shadow 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 0%, rgba(168,85,247,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .card.lime-card::before {
+      background: radial-gradient(ellipse at 50% 0%, rgba(122,222,0,0.06) 0%, transparent 70%);
+    }
+    .card:hover {
+      border-color: rgba(168,85,247,0.5);
+      transform: translateY(-5px);
+      box-shadow: 0 20px 60px rgba(168,85,247,0.1);
+    }
+    .card.lime-card:hover {
+      border-color: rgba(122,222,0,0.45);
+      box-shadow: 0 20px 60px rgba(122,222,0,0.08);
+    }
+
+    .pill {
+      font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+      text-transform: uppercase; padding: 4px 13px;
+      border-radius: 20px;
+      background: rgba(168,85,247,0.08);
+      border: 1px solid rgba(168,85,247,0.22);
+      color: #A855F7;
+    }
+    .pill.lime { background: rgba(122,222,0,0.08); border-color: rgba(122,222,0,0.22); color: #7ADE00; }
+
+    .mname { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; }
+    .mtag  { font-size: 11px; font-weight: 600; color: #A855F7; letter-spacing: 0.06em; }
+    .mtag.lime { color: #7ADE00; }
+    .mdesc { font-size: 12px; color: #6B7280; text-align: center; line-height: 1.65; }
+
+    .svg-stage {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 210px;
+    }
+
+    /* ── Floating bob ─────────────────────────────────────────── */
+    .bob-a { animation: bobA 4.2s ease-in-out infinite; }
+    .bob-b { animation: bobB 3.9s ease-in-out infinite; }
+    .bob-c { animation: bobC 4.6s ease-in-out infinite; }
+    @keyframes bobA { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-9px)} }
+    @keyframes bobB { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+    @keyframes bobC { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+
+    /* ── Antenna orb pulse ───────────────────────────────────── */
+    .ant-orb { animation: antPulse 2.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    @keyframes antPulse { 0%,100%{opacity:.88;transform:scale(1)} 50%{opacity:1;transform:scale(1.22)} }
+
+    /* ── Chip wave arm ───────────────────────────────────────── */
+    .wave-arm {
+      animation: waveArmA 1.5s ease-in-out infinite;
+      transform-box: view-box;
+      transform-origin: 144px 162px;
+    }
+    @keyframes waveArmA { 0%,100%{transform:rotate(-6deg)} 50%{transform:rotate(14deg)} }
+
+    /* ── Particles drift ─────────────────────────────────────── */
+    .d1{animation:drift1 5.5s ease-in-out infinite}
+    .d2{animation:drift2 6.2s ease-in-out infinite}
+    .d3{animation:drift3 4.8s ease-in-out infinite}
+    .d4{animation:drift4 7.1s ease-in-out infinite}
+    @keyframes drift1{0%,100%{opacity:.5;transform:translate(0,0)}50%{opacity:.8;transform:translate(-3px,-6px)}}
+    @keyframes drift2{0%,100%{opacity:.6;transform:translate(0,0)}50%{opacity:.9;transform:translate(4px,-5px)}}
+    @keyframes drift3{0%,100%{opacity:.35;transform:translate(0,0)}50%{opacity:.6;transform:translate(-2px,5px)}}
+    @keyframes drift4{0%,100%{opacity:.4;transform:translate(0,0)}50%{opacity:.7;transform:translate(3px,4px)}}
+
+    /* ── Spark dumbbell swing ───────────────────────────────── */
+    .db-swing { animation: dbSwing 2s ease-in-out infinite; transform-box: view-box; transform-origin: 24px 110px; }
+    @keyframes dbSwing { 0%,100%{transform:rotate(0deg)} 50%{transform:rotate(-10deg)} }
+
+    /* ── Eye blink ───────────────────────────────────────────── */
+    .blink { animation: blink 5s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    @keyframes blink { 0%,88%,94%,100%{transform:scaleY(1)} 90%,92%{transform:scaleY(0.06)} }
+
+    /* ── Glow ring pulse ─────────────────────────────────────── */
+    .ring-pulse { animation: ringP 3s ease-in-out infinite; }
+    @keyframes ringP { 0%,100%{opacity:.15} 50%{opacity:.35} }
+  </style>
+</head>
+<body>
+
+  <div class="hdr">
+    <div class="eyebrow">Central · AI Agent</div>
+    <h1>Mascot Concepts</h1>
+    <p>Three directions — pick the one that feels like Central to you</p>
+  </div>
+
+  <div class="grid">
+
+    <!-- ══════════════════════════════════════════════════
+         OPTION A · NOVA  (floating orb, minimal)
+    ═══════════════════════════════════════════════════ -->
+    <div class="card">
+      <span class="pill">Option A</span>
+
+      <div class="svg-stage">
+        <svg class="bob-a" viewBox="0 0 160 205" width="148" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="nGrad" cx="34%" cy="28%" r="70%">
+              <stop offset="0%" stop-color="#2E1262"/>
+              <stop offset="100%" stop-color="#0B041A"/>
+            </radialGradient>
+            <radialGradient id="nEye" cx="44%" cy="36%" r="58%">
+              <stop offset="0%" stop-color="#ffffff"/>
+              <stop offset="32%" stop-color="#EDE9FE"/>
+              <stop offset="100%" stop-color="#7C3AED"/>
+            </radialGradient>
+            <filter id="nGlow" x="-70%" y="-70%" width="240%" height="240%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <filter id="nSoft" x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="5"/>
+            </filter>
+          </defs>
+
+          <!-- Outer aura ring -->
+          <circle class="ring-pulse" cx="80" cy="92" r="74" fill="none" stroke="#A855F7" stroke-width="1.2"/>
+
+          <!-- Body -->
+          <circle cx="80" cy="92" r="64" fill="url(#nGrad)" stroke="#A855F7" stroke-width="2.2"/>
+
+          <!-- Subtle sheen top-left -->
+          <path d="M 46 56 Q 64 40 86 38 Q 68 52 56 68 Z" fill="white" opacity="0.035"/>
+
+          <!-- Visor -->
+          <rect x="24" y="65" width="112" height="56" rx="28" fill="#030112" stroke="#A855F7" stroke-width="1.1" stroke-opacity="0.38"/>
+
+          <!-- Eye L — glow halo -->
+          <ellipse cx="52" cy="95" rx="22" ry="24" fill="#A855F7" filter="url(#nSoft)" opacity="0.22"/>
+          <!-- Eye L -->
+          <ellipse class="blink" cx="52" cy="95" rx="14" ry="16.5" fill="#6D28D9"/>
+          <ellipse class="blink" cx="52" cy="95" rx="10" ry="12" fill="url(#nEye)"/>
+          <circle cx="48" cy="89" r="3.4" fill="white" opacity="0.94"/>
+
+          <!-- Eye R — glow halo -->
+          <ellipse cx="108" cy="95" rx="22" ry="24" fill="#A855F7" filter="url(#nSoft)" opacity="0.22"/>
+          <!-- Eye R -->
+          <ellipse class="blink" cx="108" cy="95" rx="14" ry="16.5" fill="#6D28D9"/>
+          <ellipse class="blink" cx="108" cy="95" rx="10" ry="12" fill="url(#nEye)"/>
+          <circle cx="104" cy="89" r="3.4" fill="white" opacity="0.94"/>
+
+          <!-- Blush -->
+          <ellipse cx="35" cy="113" rx="13" ry="7.5" fill="#EC4899" opacity="0.17"/>
+          <ellipse cx="125" cy="113" rx="13" ry="7.5" fill="#EC4899" opacity="0.17"/>
+
+          <!-- Smile -->
+          <path d="M 60 120 Q 80 134 100 120" stroke="#A855F7" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+
+          <!-- Antenna -->
+          <line x1="80" y1="28" x2="80" y2="41" stroke="#A855F7" stroke-width="2.2" stroke-linecap="round"/>
+          <circle class="ant-orb" cx="80" cy="22" r="8.5" fill="#7ADE00"/>
+          <circle cx="80" cy="22" r="13" fill="none" stroke="#7ADE00" stroke-width="1.3" opacity="0.28"/>
+          <circle cx="80" cy="22" r="5" fill="#DDFF80"/>
+
+          <!-- Tiny paw hands at sides -->
+          <circle cx="14" cy="98" r="12" fill="#160A2C" stroke="#A855F7" stroke-width="1.6"/>
+          <line x1="8"  cy="92" x2="6"  y2="87" stroke="#A855F7" stroke-width="1.3" stroke-linecap="round"/>
+          <line x1="14" y1="90" x2="14" y2="85" stroke="#A855F7" stroke-width="1.3" stroke-linecap="round"/>
+          <line x1="20" y1="92" x2="22" y2="87" stroke="#A855F7" stroke-width="1.3" stroke-linecap="round"/>
+
+          <circle cx="146" cy="82" r="12" fill="#160A2C" stroke="#A855F7" stroke-width="1.6"/>
+          <line x1="140" y1="76" x2="138" y2="71" stroke="#A855F7" stroke-width="1.3" stroke-linecap="round"/>
+          <line x1="146" y1="74" x2="146" y2="69" stroke="#A855F7" stroke-width="1.3" stroke-linecap="round"/>
+          <line x1="152" y1="76" x2="154" y2="71" stroke="#A855F7" stroke-width="1.3" stroke-linecap="round"/>
+
+          <!-- Feet -->
+          <ellipse cx="60"  cy="168" rx="20" ry="12.5" fill="#0C0418" stroke="#A855F7" stroke-width="1.6"/>
+          <ellipse cx="100" cy="168" rx="20" ry="12.5" fill="#0C0418" stroke="#A855F7" stroke-width="1.6"/>
+
+          <!-- Floating data particles -->
+          <circle class="d1" cx="13"  cy="52"  r="3"   fill="#A855F7" opacity="0.5"/>
+          <circle class="d2" cx="149" cy="44"  r="2.2" fill="#7ADE00" opacity="0.6"/>
+          <circle class="d3" cx="9"   cy="122" r="2"   fill="#A855F7" opacity="0.38"/>
+          <circle class="d4" cx="153" cy="126" r="2.5" fill="#7ADE00" opacity="0.44"/>
+          <circle class="d3" cx="28"  cy="155" r="1.5" fill="#A855F7" opacity="0.32"/>
+          <circle class="d1" cx="134" cy="158" r="1.5" fill="#7ADE00" opacity="0.38"/>
+        </svg>
+      </div>
+
+      <span class="mname">Nova</span>
+      <span class="mtag">Floating · Minimal · Mysterious</span>
+      <p class="mdesc">Spirit-orb personality. Floats as a subtle overlay anywhere in the app. Feels like an AI presence, not a cartoon mascot.</p>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════
+         OPTION B · CHIP  (chibi robot, character-driven)
+    ═══════════════════════════════════════════════════ -->
+    <div class="card">
+      <span class="pill">Option B</span>
+
+      <div class="svg-stage">
+        <svg class="bob-b" viewBox="0 0 200 272" width="148" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="cGrad" cx="33%" cy="27%" r="73%">
+              <stop offset="0%" stop-color="#2C1158"/>
+              <stop offset="100%" stop-color="#100523"/>
+            </radialGradient>
+            <radialGradient id="cEye" cx="43%" cy="36%" r="58%">
+              <stop offset="0%" stop-color="#ffffff"/>
+              <stop offset="30%" stop-color="#EDE9FE"/>
+              <stop offset="100%" stop-color="#7C3AED"/>
+            </radialGradient>
+            <filter id="cSoft" x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="4"/>
+            </filter>
+          </defs>
+
+          <!-- Ground shadow -->
+          <ellipse cx="100" cy="265" rx="46" ry="7" fill="#A855F7" opacity="0.07"/>
+
+          <!-- LEFT ARM (hanging, behind body — draw first) -->
+          <rect x="28" y="168" width="27" height="44" rx="13.5" fill="#1C0A36" stroke="#A855F7" stroke-width="1.9"/>
+          <!-- Left hand -->
+          <ellipse cx="41.5" cy="219" rx="17" ry="14" fill="#1C0A36" stroke="#A855F7" stroke-width="1.9"/>
+          <line x1="34" y1="213" x2="32" y2="207" stroke="#A855F7" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="41" y1="211" x2="41" y2="205" stroke="#A855F7" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="49" y1="213" x2="51" y2="207" stroke="#A855F7" stroke-width="1.5" stroke-linecap="round"/>
+
+          <!-- RIGHT ARM (raised/waving — drawn so head covers shoulder) -->
+          <g class="wave-arm">
+            <!-- Upper arm -->
+            <rect x="144" y="148" width="26" height="46" rx="13"
+              fill="#1C0A36" stroke="#A855F7" stroke-width="1.9"
+              transform="rotate(-40 144 148)"/>
+            <!-- Waving hand (mitten) -->
+            <ellipse cx="176" cy="90" rx="20" ry="23" fill="#1C0A36" stroke="#A855F7" stroke-width="2"/>
+            <!-- Finger lines -->
+            <line x1="167" y1="75" x2="164" y2="66" stroke="#A855F7" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="175" y1="72" x2="174" y2="63" stroke="#A855F7" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="183" y1="75" x2="184" y2="66" stroke="#A855F7" stroke-width="1.6" stroke-linecap="round"/>
+          </g>
+
+          <!-- HEAD — dominant, ~55% of total height -->
+          <!-- Outer aura -->
+          <circle class="ring-pulse" cx="100" cy="98" r="82" fill="none" stroke="#A855F7" stroke-width="1.2"/>
+          <!-- Head -->
+          <circle cx="100" cy="98" r="74" fill="url(#cGrad)" stroke="#A855F7" stroke-width="2.6"/>
+          <!-- Subtle sheen -->
+          <path d="M 54 55 Q 74 38 96 36 Q 78 50 64 68 Z" fill="white" opacity="0.033"/>
+
+          <!-- VISOR -->
+          <rect x="34" y="66" width="132" height="66" rx="33" fill="#030112" stroke="#A855F7" stroke-width="1.2" stroke-opacity="0.36"/>
+
+          <!-- EYE L — halo -->
+          <ellipse cx="68" cy="101" rx="24" ry="26" fill="#A855F7" filter="url(#cSoft)" opacity="0.18"/>
+          <!-- Eye L -->
+          <ellipse class="blink" cx="68" cy="101" rx="16.5" ry="19" fill="#5B21B6"/>
+          <ellipse class="blink" cx="68" cy="101" rx="11.5" ry="13.5" fill="url(#cEye)"/>
+          <circle cx="63" cy="94" r="4" fill="white" opacity="0.93"/>
+
+          <!-- EYE R — halo -->
+          <ellipse cx="132" cy="101" rx="24" ry="26" fill="#A855F7" filter="url(#cSoft)" opacity="0.18"/>
+          <!-- Eye R -->
+          <ellipse class="blink" cx="132" cy="101" rx="16.5" ry="19" fill="#5B21B6"/>
+          <ellipse class="blink" cx="132" cy="101" rx="11.5" ry="13.5" fill="url(#cEye)"/>
+          <circle cx="127" cy="94" r="4" fill="white" opacity="0.93"/>
+
+          <!-- Blush -->
+          <ellipse cx="48"  cy="119" rx="15" ry="8.5" fill="#EC4899" opacity="0.19"/>
+          <ellipse cx="152" cy="119" rx="15" ry="8.5" fill="#EC4899" opacity="0.19"/>
+
+          <!-- Smile -->
+          <path d="M 80 130 Q 100 144 120 130" stroke="#A855F7" stroke-width="2.7" fill="none" stroke-linecap="round"/>
+
+          <!-- ANTENNA -->
+          <line x1="100" y1="24" x2="100" y2="38" stroke="#A855F7" stroke-width="2.5" stroke-linecap="round"/>
+          <circle class="ant-orb" cx="100" cy="17" r="9.5" fill="#7ADE00"/>
+          <circle cx="100" cy="17" r="15" fill="none" stroke="#7ADE00" stroke-width="1.3" opacity="0.26"/>
+          <circle cx="100" cy="17" r="5.5" fill="#E0FF80"/>
+
+          <!-- BODY -->
+          <rect x="60" y="164" width="80" height="58" rx="30" fill="url(#cGrad)" stroke="#A855F7" stroke-width="2"/>
+
+          <!-- Chest badge — lightning bolt in circle -->
+          <circle cx="100" cy="190" r="15" fill="#050012" stroke="#A855F7" stroke-width="1.4"/>
+          <path d="M 104 180 L 97 190 L 102 190 L 95 200 L 106 188 L 100 188 Z" fill="#7ADE00" opacity="0.9"/>
+
+          <!-- LEGS -->
+          <rect x="66"  cy="215" x="66"  y="217" width="27" height="28" rx="13.5" fill="#1C0A36" stroke="#A855F7" stroke-width="1.9"/>
+          <ellipse cx="74"  cy="250" rx="24" ry="13" fill="#1C0A36" stroke="#A855F7" stroke-width="1.9"/>
+          <rect x="107" y="217" width="27" height="28" rx="13.5" fill="#1C0A36" stroke="#A855F7" stroke-width="1.9"/>
+          <ellipse cx="126" cy="250" rx="24" ry="13" fill="#1C0A36" stroke="#A855F7" stroke-width="1.9"/>
+        </svg>
+      </div>
+
+      <span class="mname">Chip</span>
+      <span class="mtag">Chibi · Character · Expressive</span>
+      <p class="mdesc">Big-head chibi robot with a waving arm. Character-driven, roams naturally between screens. Most brand-able.</p>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════
+         OPTION C · SPARK  (lime fitness bot, energetic)
+    ═══════════════════════════════════════════════════ -->
+    <div class="card lime-card">
+      <span class="pill lime">Option C</span>
+
+      <div class="svg-stage">
+        <svg class="bob-c" viewBox="0 0 170 215" width="148" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="sGrad" cx="34%" cy="28%" r="70%">
+              <stop offset="0%" stop-color="#172910"/>
+              <stop offset="100%" stop-color="#070E04"/>
+            </radialGradient>
+            <radialGradient id="sEye" cx="44%" cy="36%" r="58%">
+              <stop offset="0%" stop-color="#ffffff"/>
+              <stop offset="30%" stop-color="#ECFCCB"/>
+              <stop offset="100%" stop-color="#4D7C0F"/>
+            </radialGradient>
+            <filter id="sSoft" x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="4"/>
+            </filter>
+            <filter id="sGlow" x="-70%" y="-70%" width="240%" height="240%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+
+          <!-- Shadow -->
+          <ellipse cx="85" cy="208" rx="44" ry="7" fill="#7ADE00" opacity="0.06"/>
+
+          <!-- DUMBBELL (held at side) -->
+          <g class="db-swing">
+            <rect x="10" y="106" width="34" height="9" rx="4.5" fill="#0A0A0A" stroke="#7ADE00" stroke-width="1.8"/>
+            <circle cx="12"  cy="110.5" r="9"  fill="#080E04" stroke="#7ADE00" stroke-width="1.8"/>
+            <circle cx="42"  cy="110.5" r="9"  fill="#080E04" stroke="#7ADE00" stroke-width="1.8"/>
+            <circle cx="12"  cy="110.5" r="5"  fill="#0E1808" stroke="#7ADE00" stroke-width="1" stroke-opacity="0.4"/>
+            <circle cx="42"  cy="110.5" r="5"  fill="#0E1808" stroke="#7ADE00" stroke-width="1" stroke-opacity="0.4"/>
+          </g>
+
+          <!-- WAVING ARM (right side) -->
+          <rect x="136" y="140" width="24" height="42" rx="12" fill="#0E1808" stroke="#7ADE00" stroke-width="1.8"
+            transform="rotate(-38 136 140)"/>
+          <ellipse cx="162" cy="88" rx="18" ry="21" fill="#0E1808" stroke="#7ADE00" stroke-width="1.9"/>
+          <line x1="153" y1="75" x2="151" y2="67" stroke="#7ADE00" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="161" y1="73" x2="161" y2="65" stroke="#7ADE00" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="169" y1="75" x2="170" y2="67" stroke="#7ADE00" stroke-width="1.5" stroke-linecap="round"/>
+
+          <!-- Outer aura ring -->
+          <circle class="ring-pulse" cx="85" cy="95" r="72" fill="none" stroke="#7ADE00" stroke-width="1.2"/>
+          <!-- Body -->
+          <circle cx="85" cy="95" r="64" fill="url(#sGrad)" stroke="#7ADE00" stroke-width="2.3"/>
+          <!-- Sheen -->
+          <path d="M 50 58 Q 68 42 90 40 Q 72 54 60 70 Z" fill="white" opacity="0.033"/>
+
+          <!-- Visor -->
+          <rect x="27" y="67" width="116" height="56" rx="28" fill="#020702" stroke="#7ADE00" stroke-width="1.1" stroke-opacity="0.36"/>
+
+          <!-- EYE L — halo -->
+          <ellipse cx="57" cy="97" rx="20" ry="22" fill="#7ADE00" filter="url(#sSoft)" opacity="0.2"/>
+          <!-- Eye L -->
+          <ellipse class="blink" cx="57" cy="97" rx="14" ry="16" fill="#365314"/>
+          <ellipse class="blink" cx="57" cy="97" rx="9.5" ry="11.5" fill="url(#sEye)"/>
+          <circle cx="53" cy="91" r="3.3" fill="white" opacity="0.93"/>
+
+          <!-- EYE R — halo -->
+          <ellipse cx="113" cy="97" rx="20" ry="22" fill="#7ADE00" filter="url(#sSoft)" opacity="0.2"/>
+          <!-- Eye R -->
+          <ellipse class="blink" cx="113" cy="97" rx="14" ry="16" fill="#365314"/>
+          <ellipse class="blink" cx="113" cy="97" rx="9.5" ry="11.5" fill="url(#sEye)"/>
+          <circle cx="109" cy="91" r="3.3" fill="white" opacity="0.93"/>
+
+          <!-- Blush (lime tinted) -->
+          <ellipse cx="38"  cy="115" rx="13" ry="7" fill="#84CC16" opacity="0.17"/>
+          <ellipse cx="132" cy="115" rx="13" ry="7" fill="#84CC16" opacity="0.17"/>
+
+          <!-- Big energetic smile -->
+          <path d="M 62 120 Q 85 138 108 120" stroke="#7ADE00" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+
+          <!-- Lightning bolt antenna (instead of orb — fitness energy) -->
+          <line x1="85" y1="31" x2="85" y2="43" stroke="#7ADE00" stroke-width="2.3" stroke-linecap="round"/>
+          <path d="M 90 20 L 82 32 L 87 32 L 80 44 L 91 30 L 85 30 Z"
+            fill="#7ADE00" opacity="0.92" filter="url(#sGlow)"/>
+          <path d="M 90 20 L 82 32 L 87 32 L 80 44 L 91 30 L 85 30 Z"
+            fill="none" stroke="#C8FF60" stroke-width="0.8" opacity="0.6"/>
+
+          <!-- Small chest badge - heart rate line -->
+          <rect x="68" y="148" width="34" height="18" rx="9" fill="#020702" stroke="#7ADE00" stroke-width="1.3"/>
+          <polyline points="72,157 76,157 79,151 83,163 86,157 90,157 94,157 98,154"
+            fill="none" stroke="#7ADE00" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+          <!-- Feet -->
+          <ellipse cx="65"  cy="178" rx="21" ry="13" fill="#070E04" stroke="#7ADE00" stroke-width="1.7"/>
+          <ellipse cx="105" cy="178" rx="21" ry="13" fill="#070E04" stroke="#7ADE00" stroke-width="1.7"/>
+
+          <!-- Particles -->
+          <circle class="d1" cx="12"  cy="52"  r="3.2" fill="#7ADE00" opacity="0.5"/>
+          <circle class="d2" cx="160" cy="46"  r="2.2" fill="#7ADE00" opacity="0.6"/>
+          <circle class="d3" cx="8"   cy="130" r="2"   fill="#A855F7" opacity="0.4"/>
+          <circle class="d4" cx="162" cy="134" r="2.5" fill="#7ADE00" opacity="0.44"/>
+        </svg>
+      </div>
+
+      <span class="mname">Spark</span>
+      <span class="mtag lime">Energetic · Fitness · Lime</span>
+      <p class="mdesc">Lime fitness bot holding a dumbbell, heartrate on chest. Pure workout energy — matches the Workout screen accent.</p>
+    </div>
+
+  </div>
+
+  <!-- Bottom note -->
+  <p style="text-align:center; margin-top:48px; font-size:12px; color:#374151;">
+    All three animate live above · designs use the app's exact Onyx palette · ready to turn the chosen one into a React component
+  </p>
+
+</body>
+</html>
