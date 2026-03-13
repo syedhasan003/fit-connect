@@ -66,6 +66,8 @@ from app.routers import home as home_router
 # -------------------------------------------------
 from app.routers import vault
 from app.routers import vault_health_timeline   # ✅ NEW (READ-ONLY DAILY SNAPSHOT)
+from app.routers import vault_collections       # ✅ Collections feature
+import app.models.vault_collection              # ensure table is created
 
 # -------------------------------------------------
 # Internal / System (Evaluator)
@@ -197,6 +199,7 @@ app.include_router(home_router.router)
 # Vault
 app.include_router(vault.router)
 app.include_router(vault_health_timeline.router)  # ✅ READ-ONLY HEALTH TIMELINE
+app.include_router(vault_collections.router)       # ✅ Collections
 
 # Internal (Evaluator)
 app.include_router(internal.router)
